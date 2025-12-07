@@ -1,0 +1,10 @@
+#!/bin/bash
+# Wrapper script to run Taskfile.yml from anywhere via symlink
+
+# Resolve the real path of this script (follows symlinks)
+SCRIPT_PATH="$(realpath "${BASH_SOURCE[0]}")"
+SCRIPT_DIR="$(dirname "$SCRIPT_PATH")"
+
+# Run task with the Taskfile in the same directory as this script
+exec task --taskfile "$SCRIPT_DIR/Taskfile.yml" "$@"
+

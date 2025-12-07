@@ -1,10 +1,17 @@
+#! /usr/bin/env task
 # https://taskfile.dev
 version: "3"
+
+# Always run from the project directory (enables running via symlink from anywhere)
+dir: "{{.TASKFILE_DIR}}"
 
 dotenv: [".env"]
 
 vars:
   PYTHON: python
+  # CLI scripts
+  PAT_CLI: "{{.PYTHON}} {{.TASKFILE_DIR}}/pat.py"
+  EXTVOLUME_CLI: "{{.PYTHON}} {{.TASKFILE_DIR}}/extvolume.py"
   # Default bucket name for demos
   BUCKET: iceberg-demo
   # AWS region
@@ -60,14 +67,14 @@ tasks:
       Example:
         task pat SA_USER=my_service_user SA_ROLE=my_role
     cmds:
-      - "{{.PYTHON}} pat.py --user {{.SA_USER}} --role {{.SA_ROLE}} --db {{.PAT_OBJECTS_DB}}"
+      - "{{.PAT_CLI}} --user {{.SA_USER}} --role {{.SA_ROLE}} --db {{.PAT_OBJECTS_DB}}"
     requires:
       vars: [SA_USER, SA_ROLE, PAT_OBJECTS_DB]
 
   pat:no-rotate:
     desc: Create PAT without rotating existing
     cmds:
-      - "{{.PYTHON}} pat.py --user {{.SA_USER}} --role {{.SA_ROLE}} --db {{.PAT_OBJECTS_DB}} --no-rotate"
+      - "{{.PAT_CLI}} --user {{.SA_USER}} --role {{.SA_ROLE}} --db {{.PAT_OBJECTS_DB}} --no-rotate"
     requires:
       vars: [SA_USER, SA_ROLE, PAT_OBJECTS_DB]
 
@@ -90,7 +97,7 @@ tasks:
         task extvolume:create BUCKET=my-data
         task extvolume:create BUCKET=my-data -- --no-prefix
     cmds:
-      - "{{.PYTHON}} extvolume.py --region {{.AWS_REGION}} create --bucket {{.BUCKET}} {{.CLI_ARGS}}"
+      - "{{.EXTVOLUME_CLI}} --region {{.AWS_REGION}} create --bucket {{.BUCKET}} {{.CLI_ARGS}}"
     requires:
       vars: [BUCKET]
 
@@ -106,7 +113,7 @@ tasks:
         task extvolume:delete BUCKET=my-data
         task extvolume:delete BUCKET=my-data -- --delete-bucket --force
     cmds:
-      - "{{.PYTHON}} extvolume.py --region {{.AWS_REGION}} delete --bucket {{.BUCKET}} {{.CLI_ARGS}}"
+      - "{{.EXTVOLUME_CLI}} --region {{.AWS_REGION}} delete --bucket {{.BUCKET}} {{.CLI_ARGS}}"
     requires:
       vars: [BUCKET]
     prompt: "This will delete AWS and Snowflake resources. Continue?"
@@ -122,9 +129,9 @@ tasks:
     cmds:
       - |
         if [ -n "{{.VOLUME}}" ]; then
-          {{.PYTHON}} extvolume.py verify --volume-name {{.VOLUME}}
+          {{.EXTVOLUME_CLI}} verify --volume-name {{.VOLUME}}
         else
-          {{.PYTHON}} extvolume.py --region {{.AWS_REGION}} verify --volume-name $({{.PYTHON}} -c "from extvolume import to_sql_identifier, get_current_username; print(to_sql_identifier('{{.BUCKET}}_external_volume', get_current_username()))")
+          {{.EXTVOLUME_CLI}} --region {{.AWS_REGION}} verify --volume-name $({{.PYTHON}} -c "from extvolume import to_sql_identifier, get_current_username; print(to_sql_identifier('{{.BUCKET}}_external_volume', get_current_username()))")
         fi
     vars:
       VOLUME: '{{.VOLUME | default ""}}'
@@ -139,7 +146,7 @@ tasks:
       Example:
         task extvolume:describe VOLUME=MY_EXTERNAL_VOLUME
     cmds:
-      - "{{.PYTHON}} extvolume.py describe --volume-name {{.VOLUME}}"
+      - "{{.EXTVOLUME_CLI}} describe --volume-name {{.VOLUME}}"
     requires:
       vars: [VOLUME]
 
@@ -155,9 +162,9 @@ tasks:
     cmds:
       - |
         if [ -n "{{.BUCKET}}" ]; then
-          {{.PYTHON}} extvolume.py --region {{.AWS_REGION}} update-trust --bucket {{.BUCKET}}
+          {{.EXTVOLUME_CLI}} --region {{.AWS_REGION}} update-trust --bucket {{.BUCKET}}
         else
-          {{.PYTHON}} extvolume.py update-trust --role-name {{.ROLE}} --volume-name {{.VOLUME}}
+          {{.EXTVOLUME_CLI}} update-trust --role-name {{.ROLE}} --volume-name {{.VOLUME}}
         fi
     vars:
       BUCKET: '{{.BUCKET | default ""}}'
@@ -324,10 +331,10 @@ tasks:
   help:extvolume:
     desc: Show extvolume CLI options
     cmds:
-      - "{{.PYTHON}} extvolume.py --help"
-      - "{{.PYTHON}} extvolume.py create --help"
+      - "{{.EXTVOLUME_CLI}} --help"
+      - "{{.EXTVOLUME_CLI}} create --help"
 
   help:pat:
     desc: Show pat CLI options
     cmds:
-      - "{{.PYTHON}} pat.py --help"
+      - "{{.PAT_CLI}} --help"
