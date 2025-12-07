@@ -77,7 +77,7 @@ def setup_service_user(user: str, role: str) -> None:
         USE ROLE accountadmin;
         CREATE USER IF NOT EXISTS {user}
             TYPE = SERVICE
-            COMMENT = 'Service User Openflow Demos';
+            COMMENT = 'Service user for PAT access';
         GRANT ROLE {role} TO USER {user};
     """
     run_snow_sql_stdin(sql)
@@ -86,11 +86,21 @@ def setup_service_user(user: str, role: str) -> None:
 
 def setup_network_policy(user: str, role: str, db: str, local_ip: str) -> None:
     """Create network rule and policy for the service user."""
-    click.echo("Setting up network policy...")
 
-    # First, unset any existing network policy (ignore errors)
-    run_snow_sql(
-        f"USE ROLE accountadmin; ALTER USER {user} UNSET network_policy;",
+    # Derive policy names from user
+    network_rule_name = f"{user}_network_rule".upper()
+    network_policy_name = f"{user}_network_policy".upper()
+    click.echo(f"Setting up network policy for user {user}")
+    click.echo(f"Network rule: {db}.networks.{network_rule_name}")
+    click.echo(f"Network policy: {network_policy_name}")
+
+    # First, unset and drop any existing network policy (ignore errors)
+    run_snow_sql_stdin(
+        f"""
+USE ROLE accountadmin;
+ALTER USER {user} UNSET network_policy;
+DROP NETWORK POLICY IF EXISTS {network_policy_name};
+""",
         check=False,
     )
 
@@ -108,19 +118,19 @@ def setup_network_policy(user: str, role: str, db: str, local_ip: str) -> None:
         CREATE SCHEMA IF NOT EXISTS policies;
         CREATE SCHEMA IF NOT EXISTS data;
 
-        CREATE NETWORK RULE IF NOT EXISTS {db}.networks.pat_openflow_demos_local_access_rule
+        CREATE OR REPLACE NETWORK RULE {db}.networks.{network_rule_name}
             MODE = ingress
             TYPE = ipv4
             VALUE_LIST = ({cidr_list})
-            COMMENT = 'Allow only GitHub Actions and local machine IPv4 addresses';
+            COMMENT = 'Network rule for {user} PAT access';
 
         USE ROLE accountadmin;
 
-        CREATE NETWORK POLICY IF NOT EXISTS OPENFLOW_DEMOS_PAT_NETWORK_POLICY
-            ALLOWED_NETWORK_RULE_LIST = ({db}.networks.pat_openflow_demos_local_access_rule)
-            COMMENT = 'Network policy to allow all IPv4 addresses.';
+        CREATE OR REPLACE NETWORK POLICY {network_policy_name}
+            ALLOWED_NETWORK_RULE_LIST = ({db}.networks.{network_rule_name})
+            COMMENT = 'Network policy for {user} PAT access';
 
-        ALTER USER {user} SET NETWORK_POLICY = 'OPENFLOW_DEMOS_PAT_NETWORK_POLICY';
+        ALTER USER {user} SET NETWORK_POLICY = '{network_policy_name}';
     """
     run_snow_sql_stdin(sql)
     click.echo("✓ Network policy configured")
@@ -130,6 +140,9 @@ def setup_auth_policy(user: str, db: str, default_expiry_days: int, max_expiry_d
     """Create authentication policy for PAT access."""
     click.echo("Setting up authentication policy...")
 
+    # Derive auth policy name from user
+    auth_policy_name = f"{user}_auth_policy".upper()
+
     # First, unset any existing auth policy (ignore errors)
     run_snow_sql(
         f"USE ROLE accountadmin; ALTER USER {user} UNSET AUTHENTICATION POLICY;",
@@ -137,7 +150,7 @@ def setup_auth_policy(user: str, db: str, default_expiry_days: int, max_expiry_d
     )
 
     sql = f"""
-        CREATE OR ALTER AUTHENTICATION POLICY {db}.policies.demos_auth_policy
+        CREATE OR ALTER AUTHENTICATION POLICY {db}.policies.{auth_policy_name}
             AUTHENTICATION_METHODS = ('PROGRAMMATIC_ACCESS_TOKEN')
             PAT_POLICY = (
                 default_expiry_in_days = {default_expiry_days},
@@ -145,7 +158,7 @@ def setup_auth_policy(user: str, db: str, default_expiry_days: int, max_expiry_d
                 network_policy_evaluation = ENFORCED_REQUIRED
             );
 
-        ALTER USER {user} SET AUTHENTICATION POLICY {db}.policies.demos_auth_policy;
+        ALTER USER {user} SET AUTHENTICATION POLICY {db}.policies.{auth_policy_name};
     """
     run_snow_sql_stdin(sql)
     click.echo("✓ Authentication policy configured")
@@ -190,32 +203,47 @@ def create_or_rotate_pat(user: str, role: str, pat_name: str, rotate: bool = Fal
     return token
 
 
-def update_envrc(envrc_path: Path, password: str) -> None:
+def update_env(env_path: Path, user, password, role: str) -> None:
     """Update .envrc file with the new SNOWFLAKE_PASSWORD."""
-    if not envrc_path.exists():
-        click.echo(f"⚠ {envrc_path} not found, skipping update")
+    if not env_path.exists():
+        click.echo(f"⚠ {env_path} not found, skipping update")
         return
 
-    content = envrc_path.read_text()
+    content = env_path.read_text()
 
     # Create backup
-    backup_path = envrc_path.with_suffix(".envrc.bak")
-    shutil.copy(envrc_path, backup_path)
+    backup_path = env_path.with_suffix(".env.bak")
+    shutil.copy(env_path, backup_path)
 
     # Replace or add SNOWFLAKE_PASSWORD
-    pattern = r"^export SNOWFLAKE_PASSWORD=.*$"
-    replacement = f"export SNOWFLAKE_PASSWORD='{password}'"
+    password_pattern = r"^SNOWFLAKE_PASSWORD=.*$"
+    password_replacement = f"SNOWFLAKE_PASSWORD='{password}'"
 
-    if re.search(pattern, content, re.MULTILINE):
-        new_content = re.sub(pattern, replacement, content, flags=re.MULTILINE)
+    if re.search(password_pattern, content, re.MULTILINE):
+        new_content = re.sub(password_pattern, password_replacement, content, flags=re.MULTILINE)
     else:
-        new_content = content.rstrip() + f"\n{replacement}\n"
+        new_content = content.rstrip() + f"\n{password_replacement}\n"
 
-    envrc_path.write_text(new_content)
-    click.echo(f"✓ Updated {envrc_path} with new SNOWFLAKE_PASSWORD")
+    # Replace or add SA_USER
+    user_pattern = r"^SA_USER=.*$"
+    user_replacement = f"SA_USER='{user}'"
 
-    # Run direnv allow
-    subprocess.run(["direnv", "allow", str(envrc_path)], check=False)
+    if re.search(user_pattern, new_content, re.MULTILINE):
+        new_content = re.sub(user_pattern, user_replacement, new_content, flags=re.MULTILINE)
+    else:
+        new_content = new_content.rstrip() + f"\n{user_replacement}\n"
+
+    # Replace or add SA_ROLE
+    role_pattern = r"^SA_ROLE=.*$"
+    role_replacement = f"SA_ROLE='{role}'"
+
+    if re.search(role_pattern, new_content, re.MULTILINE):
+        new_content = re.sub(role_pattern, role_replacement, new_content, flags=re.MULTILINE)
+    else:
+        new_content = new_content.rstrip() + f"\n{role_replacement}\n"
+
+    env_path.write_text(new_content)
+    click.echo(f"✓ Updated {env_path} with new SNOWFLAKE_PASSWORD, SA_USER, and SA_ROLE")
 
 
 def verify_connection(user: str, password: str) -> None:
@@ -272,6 +300,7 @@ def verify_connection(user: str, password: str) -> None:
 @click.option(
     "--pat-name",
     default=None,
+    envvar="PAT_NAME",
     help="Name for the PAT token (default: {user}_pat)",
 )
 @click.option(
@@ -280,10 +309,11 @@ def verify_connection(user: str, password: str) -> None:
     help="Rotate existing PAT if it exists (default: True)",
 )
 @click.option(
-    "--envrc",
+    "--env-path",
     type=click.Path(path_type=Path),
-    default=Path(".envrc"),
-    help="Path to .envrc file to update",
+    default=Path(".env"),
+    envvar="DOT_ENV_FILE",
+    help="Path to .env file to update",
 )
 @click.option(
     "--skip-verify",
@@ -312,7 +342,7 @@ def main(
     db: str,
     pat_name: str | None,
     rotate: bool,
-    envrc: Path,
+    env_path: Path,
     skip_verify: bool,
     local_ip: str | None,
     default_expiry_days: int,
@@ -328,7 +358,7 @@ def main(
     2. Sets up network rules and policies for secure access
     3. Configures authentication policy for PAT
     4. Creates or rotates a PAT for the service user
-    5. Updates .envrc with the new credentials
+    5. Updates .env with the new credentials
     6. Verifies the connection works
 
     Example:
@@ -350,7 +380,7 @@ def main(
 
     # Set default pat_name based on user if not provided
     if not pat_name:
-        pat_name = f"{user}_pat"
+        pat_name = f"{user}_pat".upper()
 
     # Get local IP if not provided
     if not local_ip:
@@ -363,6 +393,7 @@ def main(
     click.echo(f"Role:     {role}")
     click.echo(f"Database: {db}")
     click.echo(f"PAT Name: {pat_name}")
+
     click.echo()
 
     # Step 1: Setup service user
@@ -377,8 +408,8 @@ def main(
     # Step 4: Create or rotate PAT
     password = create_or_rotate_pat(user, role, pat_name, rotate=rotate)
 
-    # Step 5: Update .envrc
-    update_envrc(envrc, password)
+    # Step 5: Update .env
+    update_env(env_path, user, password, role)
 
     # Step 6: Verify connection
     if not skip_verify:
@@ -391,4 +422,4 @@ def main(
 
 
 if __name__ == "__main__":
-    main()
+    main()  # type: ignore[call-arg] # noqa: S101
