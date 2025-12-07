@@ -4,7 +4,17 @@
 # Resolve the real path of this script (follows symlinks)
 SCRIPT_PATH="$(realpath "${BASH_SOURCE[0]}")"
 SCRIPT_DIR="$(dirname "$SCRIPT_PATH")"
+TASKFILE="$SCRIPT_DIR/Taskfile.yml"
+
+# Handle --help to list all tasks
+if [[ "$1" == "--help" || "$1" == "-h" ]]; then
+    echo "snow-utils - Snowflake External Volume & PAT Manager"
+    echo ""
+    echo "Usage: snow-utils <task> [options]"
+    echo ""
+    exec task --taskfile "$TASKFILE" --list-all
+fi
 
 # Run task with the Taskfile in the same directory as this script
-exec task --taskfile "$SCRIPT_DIR/Taskfile.yml" "$@"
+exec task --taskfile "$TASKFILE" "$@"
 

@@ -235,6 +235,18 @@ tasks:
     cmds:
       - snow sql --query "SHOW EXTERNAL VOLUMES"
 
+  snow:pats:
+    desc: List programmatic access tokens (optionally for a specific user)
+    cmds:
+      - |
+        if [ -n "{{.PAT_USER}}" ]; then
+          snow sql --query "SHOW USER PATS FOR USER {{.PAT_USER}}" --format=json
+        else
+          snow sql --query "SHOW USER PATS" --format=json
+        fi
+    vars:
+      PAT_USER: '{{.PAT_USER | default ""}}'
+
   # ===========================================================================
   # AWS CLI Shortcuts
   # ===========================================================================
