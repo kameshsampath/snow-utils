@@ -2,17 +2,26 @@
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 
-A command-line toolkit for automating Snowflake infrastructure setup — specifically **External Volumes** for Apache Iceberg tables and **Programmatic Access Tokens (PATs)** for service accounts.
+**Stop clicking through AWS Console and Snowflake UI. Automate it.**
 
-## Why This Tool?
+Snow Utils turns complex multi-step Snowflake infrastructure setup into single commands:
 
-Setting up Snowflake external volumes requires coordinating multiple AWS and Snowflake resources with specific trust relationships. Similarly, PAT management involves network policies, authentication policies, and proper role restrictions. This tool automates these complex workflows into simple commands.
+| Task | Manual | With Snow Utils |
+|------|--------|-----------------|
+| External Volume + S3 + IAM | 10+ steps, 3 consoles | `snow-utils extvolume:up` |
+| PAT + Network Policy + Auth Policy | 8+ steps | `snow-utils pat:create` |
 
-**Without this tool:** 10+ manual steps across AWS Console, IAM, S3, and Snowflake UI.
+## What It Does
 
-**With this tool:** One command.
+| Tool | What It Creates |
+|------|-----------------|
+| **External Volumes (AWS)** | S3 bucket → IAM role/policy → Snowflake external volume → trust relationship. Ready for Iceberg. |
+| **PAT Management** | Service user → network policy → auth policy → PAT. Ready for CI/CD. |
 
-## TL;DR — Common Workflows
+> [!NOTE]
+> External volume management currently supports **AWS S3** only. Azure Blob and GCS support may be added in future releases.
+
+## Quick Start
 
 ```bash
 # 🚀 Setup external volume for Iceberg tables
@@ -30,11 +39,12 @@ snow-utils pat:remove
 
 | Feature | Description |
 |---------|-------------|
-| **External Volume Management** | Create, verify, and delete Snowflake external volumes with S3 storage |
-| **AWS Resource Automation** | Automatically provisions S3 buckets, IAM roles, and policies |
+| **External Volume Management** | Create, verify, and delete Snowflake external volumes with AWS S3 |
+| **AWS Resource Automation** | Provisions S3 buckets, IAM roles, and policies automatically |
 | **PAT Management** | Create, rotate, and remove Programmatic Access Tokens |
 | **Smart Naming** | Resources prefixed with your username to avoid conflicts |
 | **Environment-Driven** | Configure once in `.env`, run commands without parameters |
+| **Tab Completion** | Shell completions for Bash and Zsh |
 
 ## Prerequisites
 
@@ -46,7 +56,8 @@ snow-utils pat:remove
 | [AWS CLI](https://aws.amazon.com/cli/) | AWS operations | `brew install awscli` |
 | Python 3.11+ | Runtime | - |
 
-> **Windows Users:** This tool requires a Unix-like shell. Please use [WSL](https://learn.microsoft.com/en-us/windows/wsl/install) (Windows Subsystem for Linux) or Git Bash.
+> [!IMPORTANT]
+> **Windows Users:** This tool requires a Unix-like shell. Use [WSL](https://learn.microsoft.com/en-us/windows/wsl/install) or Git Bash.
 
 **Required permissions:**
 
@@ -73,7 +84,8 @@ task setup
 ln -sf "$(pwd)/snow-utils" ~/.local/bin/snow-utils
 ```
 
-> Ensure `~/.local/bin` is in your `PATH`
+> [!TIP]
+> Ensure `~/.local/bin` is in your `PATH`.
 
 ### 3. Enable Tab Completion (Optional)
 
@@ -84,6 +96,7 @@ snow-utils --completion zsh > ~/.config/zsh/completions/_snow-utils
 # Or wherever your fpath completions are stored
 ```
 
+> [!TIP]
 > Ensure your `~/.zshrc` has the completions directory in `fpath` before `compinit`:
 >
 > ```zsh
@@ -136,13 +149,10 @@ snow-utils aws:whoami
 
 ---
 
-## External Volume Management
+## External Volume Management (AWS)
 
-> **📚 Documentation:**
->
-> - [Configure an External Volume](https://docs.snowflake.com/user-guide/tables-iceberg-configure-external-volume)
-> - [Configure an External Volume for Amazon S3](https://docs.snowflake.com/user-guide/tables-iceberg-configure-external-volume-s3)
-> - [Create Iceberg Tables with Snowflake Catalog](https://docs.snowflake.com/user-guide/tables-iceberg-create#label-tables-iceberg-create-snowflake-catalog)
+> [!NOTE]
+> **📚 Snowflake Docs:** [Configure External Volume](https://docs.snowflake.com/user-guide/tables-iceberg-configure-external-volume) · [External Volume for S3](https://docs.snowflake.com/user-guide/tables-iceberg-configure-external-volume-s3) · [Create Iceberg Tables](https://docs.snowflake.com/user-guide/tables-iceberg-create)
 
 ### What Gets Created
 
@@ -203,16 +213,15 @@ snow-utils extvolume:delete BUCKET=my-data
 snow-utils extvolume:delete BUCKET=my-data -- --delete-bucket --force
 ```
 
-> **Note:** The `--` separates Task variables (`VAR=value`) from CLI flags (`--flag`).
+> [!TIP]
+> The `--` separates Task variables (`VAR=value`) from CLI flags (`--flag`).
 
 ---
 
 ## PAT Management
 
-> **📚 Documentation:**
->
-> - [Using Programmatic Access Tokens](https://docs.snowflake.com/en/user-guide/programmatic-access-tokens)
-> - [ALTER USER ... ADD PROGRAMMATIC ACCESS TOKEN](https://docs.snowflake.com/en/sql-reference/sql/alter-user-add-programmatic-access-token)
+> [!NOTE]
+> **📚 Snowflake Docs:** [Programmatic Access Tokens](https://docs.snowflake.com/en/user-guide/programmatic-access-tokens) · [ALTER USER ADD PAT](https://docs.snowflake.com/en/sql-reference/sql/alter-user-add-programmatic-access-token)
 
 ### What Gets Created
 
@@ -318,8 +327,15 @@ snow-utils snow:pats PAT_USER=my_service_user
 | Command | Description |
 |---------|-------------|
 | `aws:whoami` | Show current AWS identity |
-| `aws:buckets` | List S3 buckets (filtered by username prefix) |
-| `aws:roles` | List IAM roles (filtered by snowflake) |
+| `aws:buckets` | List S3 buckets (filtered by prefix, defaults to username) |
+| `aws:roles` | List IAM roles (filtered by prefix, defaults to username) |
+
+```bash
+snow-utils aws:whoami
+snow-utils aws:buckets                    # filter by your username
+snow-utils aws:buckets PREFIX=myproject   # filter by custom prefix
+snow-utils aws:roles PREFIX=myproject
+```
 
 ---
 
@@ -410,7 +426,8 @@ snow-utils pat:create -d SA_USER=my_sa ...
 | `--verbose` | `-v` | Info level logging from snow CLI |
 | `--debug` | `-d` | Debug output including SQL statements |
 
-**Note:** Place the flag **before** the subcommand (e.g., `snow-utils --debug extvolume:create`).
+> [!IMPORTANT]
+> Place the flag **before** the subcommand: `snow-utils --debug extvolume:create`
 
 ---
 
@@ -485,6 +502,35 @@ snow-utils extvolume:create --summary
 snow-utils pat:create --summary
 snow-utils help:naming
 ```
+
+---
+
+## Use Cases
+
+### Iceberg Tables with Snowflake-Managed Catalog
+
+Once your external volume is set up, create Iceberg tables backed by S3:
+
+```sql
+CREATE ICEBERG TABLE my_catalog.my_schema.events (
+    event_id INT,
+    event_type STRING,
+    created_at TIMESTAMP
+)
+  CATALOG = 'SNOWFLAKE'
+  EXTERNAL_VOLUME = 'MY_EXTERNAL_VOLUME'
+  BASE_LOCATION = 'events/';
+```
+
+See [Snowflake Iceberg Tables Documentation](https://docs.snowflake.com/en/user-guide/tables-iceberg) for more.
+
+### Service Account Automation
+
+Use PATs for CI/CD pipelines, scheduled jobs, or any programmatic Snowflake access:
+
+- **GitHub Actions** — Automate data pipelines with Snowflake CLI
+- **Airflow/Dagster** — Connect orchestrators to Snowflake securely
+- **dbt** — Run dbt jobs with service account credentials
 
 ---
 
