@@ -46,6 +46,8 @@ snow-utils pat:remove
 | [AWS CLI](https://aws.amazon.com/cli/) | AWS operations | `brew install awscli` |
 | Python 3.11+ | Runtime | - |
 
+> **Windows Users:** This tool requires a Unix-like shell. Please use [WSL](https://learn.microsoft.com/en-us/windows/wsl/install) (Windows Subsystem for Linux) or Git Bash.
+
 **Required permissions:**
 
 - **AWS:** S3 full access, IAM role/policy management

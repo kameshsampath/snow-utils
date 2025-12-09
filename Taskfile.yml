@@ -341,14 +341,42 @@ tasks:
       - aws sts get-caller-identity
 
   aws:buckets:
-    desc: List S3 buckets (filtered by username prefix)
+    desc: List S3 buckets (filtered by prefix, defaults to username)
+    summary: |
+      Lists S3 buckets filtered by a prefix.
+
+      By default, filters by your username ($(whoami)).
+
+      Example:
+        task aws:buckets                    # filter by username
+        task aws:buckets PREFIX=myproject   # filter by custom prefix
     cmds:
-      - aws s3 ls | grep $(whoami) || echo "No buckets with your prefix found"
+      - |
+        prefix="${PREFIX:-$(whoami)}"
+        aws s3 ls | grep "$prefix" || echo "No buckets with prefix '$prefix' found"
+    env:
+      PREFIX: "{{.PREFIX}}"
+    vars:
+      PREFIX: '{{.PREFIX | default ""}}'
 
   aws:roles:
-    desc: List IAM roles (filtered by snowflake)
+    desc: List IAM roles (filtered by prefix, defaults to username)
+    summary: |
+      Lists IAM roles filtered by a prefix.
+
+      By default, filters by your username ($(whoami)).
+
+      Example:
+        task aws:roles                    # filter by username
+        task aws:roles PREFIX=myproject   # filter by custom prefix
     cmds:
-      - aws iam list-roles --query "Roles[?contains(RoleName, 'snowflake')].{Name:RoleName,Arn:Arn}" --output table
+      - |
+        prefix="${PREFIX:-$(whoami)}"
+        aws iam list-roles --query "Roles[?contains(RoleName, '$prefix')].{Name:RoleName,Arn:Arn}" --output table
+    env:
+      PREFIX: "{{.PREFIX}}"
+    vars:
+      PREFIX: '{{.PREFIX | default ""}}'
 
   # ===========================================================================
   # Development Tasks
