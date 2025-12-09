@@ -184,8 +184,12 @@ def create_or_rotate_pat(user: str, pat_role: str, pat_name: str, rotate: bool =
     existing = get_existing_pat(user, pat_name)
 
     if existing and not rotate:
-        click.echo(f"PAT '{pat_name}' already exists. Use --rotate to rotate it.")
-        raise click.ClickException("PAT already exists")
+        # Remove existing PAT and recreate (allows changing role restriction)
+        click.echo(f"PAT '{pat_name}' exists. Removing and recreating (--no-rotate)...")
+        remove_query = f"ALTER USER IF EXISTS {user} REMOVE PAT {pat_name}"
+        run_snow_sql(remove_query)
+        click.echo(f"✓ Removed existing PAT '{pat_name}'")
+        existing = None  # Mark as removed so we create a new one
 
     if existing:
         click.echo(f"Rotating PAT for service user {user}...")
