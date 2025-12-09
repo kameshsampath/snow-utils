@@ -54,7 +54,7 @@ tasks:
   # PAT Management Tasks
   # ===========================================================================
 
-  pat:
+  pat:create:
     desc: Create/rotate PAT for service user
     summary: |
       Creates or rotates a Programmatic Access Token (PAT) for the service user.
@@ -67,9 +67,9 @@ tasks:
         DOT_ENV_FILE: Path to .env file to update (default: .env in current directory)
 
       Example:
-        task pat SA_USER=my_service_user SA_ROLE=demo_role SA_ADMIN_ROLE=sysadmin PAT_OBJECTS_DB=my_db
-        task pat DOT_ENV_FILE=/path/to/project/.env  # update .env in specific location
-        task pat  # uses env vars from .env
+        task pat:create SA_USER=my_service_user SA_ROLE=demo_role SA_ADMIN_ROLE=sysadmin PAT_OBJECTS_DB=my_db
+        task pat:create DOT_ENV_FILE=/path/to/project/.env  # update .env in specific location
+        task pat:create  # uses env vars from .env
     cmds:
       - "{{.PAT_CLI}} create {{.CLI_ARGS}}"
     env:
@@ -341,28 +341,42 @@ tasks:
       - aws sts get-caller-identity
 
   aws:buckets:
-    desc: List S3 buckets (filtered by username prefix)
+    desc: List S3 buckets (filtered by prefix, defaults to username)
+    summary: |
+      Lists S3 buckets filtered by a prefix.
+
+      By default, filters by your username ($(whoami)).
+
+      Example:
+        task aws:buckets                    # filter by username
+        task aws:buckets PREFIX=myproject   # filter by custom prefix
     cmds:
-      - aws s3 ls | grep $(whoami) || echo "No buckets with your prefix found"
+      - |
+        prefix="${PREFIX:-$(whoami)}"
+        aws s3 ls | grep "$prefix" || echo "No buckets with prefix '$prefix' found"
+    env:
+      PREFIX: "{{.PREFIX}}"
+    vars:
+      PREFIX: '{{.PREFIX | default ""}}'
 
   aws:roles:
-    desc: List IAM roles (filtered by snowflake)
-    cmds:
-      - aws iam list-roles --query "Roles[?contains(RoleName, 'snowflake')].{Name:RoleName,Arn:Arn}" --output table
+    desc: List IAM roles (filtered by prefix, defaults to username)
+    summary: |
+      Lists IAM roles filtered by a prefix.
 
-  # ===========================================================================
-  # Development Tasks
-  # ===========================================================================
+      By default, filters by your username ($(whoami)).
 
-  lint:
-    desc: Run linting
+      Example:
+        task aws:roles                    # filter by username
+        task aws:roles PREFIX=myproject   # filter by custom prefix
     cmds:
-      - uv run ruff check .
-
-  format:
-    desc: Format code
-    cmds:
-      - uv run ruff format .
+      - |
+        prefix="${PREFIX:-$(whoami)}"
+        aws iam list-roles --query "Roles[?contains(RoleName, '$prefix')].{Name:RoleName,Arn:Arn}" --output table
+    env:
+      PREFIX: "{{.PREFIX}}"
+    vars:
+      PREFIX: '{{.PREFIX | default ""}}'
 
   # ===========================================================================
   # Help Tasks
