@@ -8,7 +8,8 @@ dir: "{{.TASKFILE_DIR}}"
 dotenv: [".env"]
 
 vars:
-  PYTHON: python
+  # Use uv run to automatically use the project's venv from any directory
+  PYTHON: uv run --project {{.TASKFILE_DIR}}
   # CLI scripts
   PAT_CLI: "{{.PYTHON}} {{.TASKFILE_DIR}}/pat.py"
   EXTVOLUME_CLI: "{{.PYTHON}} {{.TASKFILE_DIR}}/extvolume.py"
@@ -35,10 +36,19 @@ tasks:
       - task --list-all
 
   setup:
-    desc: Setup development environment with uv
+    desc: Setup development environment with uv and install global command
     cmds:
       - uv venv
       - uv sync
+      - |
+        # Create symlink in ~/.local/bin if it doesn't exist
+        mkdir -p ~/.local/bin
+        if [ ! -L ~/.local/bin/snow-utils ]; then
+          ln -sf "{{.TASKFILE_DIR}}/snow-utils" ~/.local/bin/snow-utils
+          echo "✓ Installed snow-utils to ~/.local/bin/snow-utils"
+        else
+          echo "✓ snow-utils symlink already exists"
+        fi
     sources:
       - pyproject.toml
       - requirements.txt

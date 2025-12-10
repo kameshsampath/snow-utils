@@ -74,20 +74,27 @@ snow-utils pat:remove
 git clone https://github.com/kameshsampath/snow-bin-utils
 cd snow-bin-utils
 
-# Setup Python environment
+# Setup Python environment and install global command
 task setup
+
+# Or if you already have the repo and just need to update dependencies
+task install
 ```
 
-### 2. Install as Global Command (Optional)
-
-```bash
-ln -sf "$(pwd)/snow-utils" ~/.local/bin/snow-utils
-```
+This will:
+- Create `.venv` and install Python dependencies
+- Symlink `snow-utils` to `~/.local/bin/` (if not already present)
 
 > [!TIP]
-> Ensure `~/.local/bin` is in your `PATH`.
+> Ensure `~/.local/bin` is in your `PATH`. Add to your shell profile if needed:
+> ```bash
+> export PATH="$HOME/.local/bin:$PATH"
+> ```
 
-### 3. Enable Tab Completion (Optional)
+> [!NOTE]
+> After running `task setup`, `snow-utils` works from **any directory** — it automatically uses the Python environment from the install location via `uv run`. No need to activate a venv or set up Python in each project.
+
+### 2. Enable Tab Completion (Optional)
 
 **Zsh** (save to your completions directory):
 
@@ -111,7 +118,7 @@ snow-utils --completion bash >> ~/.bashrc
 source ~/.bashrc
 ```
 
-### 4. Configure Environment
+### 3. Configure Environment
 
 Create a `.env` file (or copy from `.env.example`):
 
@@ -134,7 +141,7 @@ SA_ADMIN_ROLE=sysadmin
 PAT_OBJECTS_DB=my_db
 ```
 
-### 5. Verify Installation
+### 4. Verify Installation
 
 ```bash
 # Check snow-utils is available
