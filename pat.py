@@ -18,8 +18,10 @@ import requests
 
 from snow_common import (
     get_snow_cli_options,
+    mask_sensitive_string,
     run_snow_sql,
     run_snow_sql_stdin,
+    set_masking,
     set_snow_cli_options,
 )
 
@@ -608,10 +610,12 @@ def create_command(
         click.echo(f"Admin Role: {admin_role} (for creating policies)")
         click.echo(f"Database:   {db}")
         click.echo(f"PAT Name:   {pat_name}")
-        click.echo(f"Local IP:   {local_ip}")
+        display_ip = local_ip if dry_run else mask_sensitive_string(local_ip, "ip")
+        click.echo(f"Local IP:   {display_ip}")
         click.echo()
 
     if dry_run:
+        set_masking(False)
         click.echo("─" * 60)
         click.echo("Resources that would be created:")
         click.echo(f"  Service User:     {user}")

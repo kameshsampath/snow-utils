@@ -23,8 +23,10 @@ import click
 from botocore.exceptions import ClientError
 
 from snow_common import (
+    mask_sensitive_string,
     run_snow_sql,
     run_snow_sql_stdin,
+    set_masking,
     set_snow_cli_options,
 )
 
@@ -545,8 +547,10 @@ def describe_external_volume(volume_name: str) -> dict[str, str]:
             "Could not find STORAGE_AWS_IAM_USER_ARN in external volume description"
         )
 
-    click.echo(f"✓ Snowflake IAM User ARN: {properties.get('iam_user_arn')}")
-    click.echo(f"✓ External ID: {properties.get('external_id')}")
+    iam_user_arn = properties.get('iam_user_arn')
+    external_id = properties.get('external_id')
+    click.echo(f"✓ Snowflake IAM User ARN: {mask_sensitive_string(iam_user_arn, 'arn')}")
+    click.echo(f"✓ External ID: {mask_sensitive_string(external_id, 'external_id')}")
 
     return properties
 
@@ -859,13 +863,18 @@ def create(
         click.echo()
         click.echo("Snowflake Objects (UPPERCASE, underscores):")
         click.echo(f"  External Volume:  {config.volume_name}")
-        click.echo(f"  External ID:      {config.external_id}")
+        ext_id_display = (
+            config.external_id if dry_run
+            else mask_sensitive_string(config.external_id, "external_id")
+        )
+        click.echo(f"  External ID:      {ext_id_display}")
         click.echo()
         click.echo(f"Region:           {config.aws_region}")
         click.echo(f"Allow Writes:     {config.allow_writes}")
         click.echo()
 
     if dry_run:
+        set_masking(False)
         # For dry-run, try to get account_id but use placeholder if AWS creds unavailable
         try:
             sts_client = boto3.client("sts")
@@ -940,7 +949,7 @@ def create(
     account_id = get_aws_account_id(sts_client)
     policy_arn = f"arn:aws:iam::{account_id}:policy/{config.policy_name}"
     if output == "text":
-        click.echo(f"AWS Account ID: {account_id}")
+        click.echo(f"AWS Account ID: {mask_sensitive_string(account_id, 'aws_account_id')}")
         click.echo()
 
     # Track what we've created for potential rollback
