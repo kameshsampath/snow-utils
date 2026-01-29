@@ -258,6 +258,17 @@ def remove_service_user(user: str) -> None:
     click.echo(f"✓ Service user {user} dropped")
 
 
+def _escape_env_value(value: str) -> str:
+    """
+    Escape a value for safe storage in .env file.
+
+    Uses double quotes and escapes internal double quotes and backslashes.
+    This is compatible with python-dotenv and most .env parsers.
+    """
+    escaped = value.replace("\\", "\\\\").replace('"', '\\"')
+    return f'"{escaped}"'
+
+
 def update_env(env_path: Path, user: str, password: str, pat_role: str) -> None:
     """Update .env file with the new SNOWFLAKE_PASSWORD and SA_ROLE (PAT role restriction)."""
     if not env_path.exists():
@@ -270,27 +281,27 @@ def update_env(env_path: Path, user: str, password: str, pat_role: str) -> None:
     backup_path = env_path.with_suffix(".env.bak")
     shutil.copy(env_path, backup_path)
 
-    # Replace or add SNOWFLAKE_PASSWORD
+    # Replace or add SNOWFLAKE_PASSWORD (properly escaped)
     password_pattern = r"^SNOWFLAKE_PASSWORD=.*$"
-    password_replacement = f"SNOWFLAKE_PASSWORD='{password}'"
+    password_replacement = f"SNOWFLAKE_PASSWORD={_escape_env_value(password)}"
 
     if re.search(password_pattern, content, re.MULTILINE):
         new_content = re.sub(password_pattern, password_replacement, content, flags=re.MULTILINE)
     else:
         new_content = content.rstrip() + f"\n{password_replacement}\n"
 
-    # Replace or add SA_USER
+    # Replace or add SA_USER (properly escaped)
     user_pattern = r"^SA_USER=.*$"
-    user_replacement = f"SA_USER='{user}'"
+    user_replacement = f"SA_USER={_escape_env_value(user)}"
 
     if re.search(user_pattern, new_content, re.MULTILINE):
         new_content = re.sub(user_pattern, user_replacement, new_content, flags=re.MULTILINE)
     else:
         new_content = new_content.rstrip() + f"\n{user_replacement}\n"
 
-    # Replace or add SA_ROLE (the PAT role restriction)
+    # Replace or add SA_ROLE (properly escaped)
     role_pattern = r"^SA_ROLE=.*$"
-    role_replacement = f"SA_ROLE='{pat_role}'"
+    role_replacement = f"SA_ROLE={_escape_env_value(pat_role)}"
 
     if re.search(role_pattern, new_content, re.MULTILINE):
         new_content = re.sub(role_pattern, role_replacement, new_content, flags=re.MULTILINE)
@@ -316,7 +327,7 @@ def clear_env(env_path: Path) -> None:
 
     # Set SNOWFLAKE_PASSWORD to empty string
     password_pattern = r"^SNOWFLAKE_PASSWORD=.*$"
-    new_content = re.sub(password_pattern, "SNOWFLAKE_PASSWORD=''", content, flags=re.MULTILINE)
+    new_content = re.sub(password_pattern, 'SNOWFLAKE_PASSWORD=""', content, flags=re.MULTILINE)
 
     env_path.write_text(new_content)
     click.echo(f"✓ Cleared SNOWFLAKE_PASSWORD in {env_path}")
