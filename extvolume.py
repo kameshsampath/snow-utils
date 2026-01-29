@@ -14,6 +14,7 @@ import json
 import re
 import time
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
@@ -26,6 +27,86 @@ from snow_common import (
     run_snow_sql_stdin,
     set_snow_cli_options,
 )
+
+# =============================================================================
+# Wait Utilities
+# =============================================================================
+
+
+def wait_with_backoff(
+    check_fn: Callable[[], bool],
+    description: str,
+    max_attempts: int = 6,
+    initial_delay: float = 2.0,
+    max_delay: float = 30.0,
+    backoff_factor: float = 2.0,
+) -> bool:
+    """
+    Wait with exponential backoff until check_fn returns True.
+
+    Args:
+        check_fn: Function that returns True when ready, False otherwise
+        description: What we're waiting for (for logging)
+        max_attempts: Maximum number of attempts
+        initial_delay: Initial delay in seconds
+        max_delay: Maximum delay between attempts
+        backoff_factor: Multiplier for each subsequent delay
+
+    Returns:
+        True if check succeeded, False if all attempts exhausted
+    """
+    delay = initial_delay
+    for attempt in range(1, max_attempts + 1):
+        if check_fn():
+            return True
+        if attempt < max_attempts:
+            click.echo(f"  Waiting for {description}... (attempt {attempt}/{max_attempts})")
+            time.sleep(delay)
+            delay = min(delay * backoff_factor, max_delay)
+    return False
+
+
+def wait_for_iam_role(iam_client: Any, role_name: str, max_wait: int = 30) -> None:
+    """Wait for IAM role to be available with exponential backoff."""
+    click.echo("Waiting for IAM role propagation...")
+
+    def check_role() -> bool:
+        try:
+            iam_client.get_role(RoleName=role_name)
+            return True
+        except ClientError:
+            return False
+
+    if wait_with_backoff(check_role, "IAM role", max_attempts=6, initial_delay=2.0):
+        click.echo("✓ IAM role is available")
+    else:
+        click.echo("⚠ IAM role propagation timeout, proceeding anyway...")
+
+
+def wait_for_trust_policy(
+    iam_client: Any, role_name: str, expected_principal: str, max_wait: int = 30
+) -> None:
+    """Wait for IAM trust policy to be updated with exponential backoff."""
+    click.echo("Waiting for trust policy propagation...")
+
+    def check_trust() -> bool:
+        try:
+            response = iam_client.get_role(RoleName=role_name)
+            trust_policy = response["Role"]["AssumeRolePolicyDocument"]
+            for statement in trust_policy.get("Statement", []):
+                principal = statement.get("Principal", {})
+                if isinstance(principal, dict):
+                    aws_principal = principal.get("AWS", "")
+                    if expected_principal in str(aws_principal):
+                        return True
+            return False
+        except ClientError:
+            return False
+
+    if wait_with_backoff(check_trust, "trust policy", max_attempts=6, initial_delay=2.0):
+        click.echo("✓ Trust policy is updated")
+    else:
+        click.echo("⚠ Trust policy propagation timeout, proceeding anyway...")
 
 
 @dataclass
@@ -791,9 +872,8 @@ def create(
         created_role = True
         click.echo()
 
-        # Wait a bit for IAM propagation
-        click.echo("Waiting for IAM propagation...")
-        time.sleep(10)
+        # Wait for IAM role propagation with backoff
+        wait_for_iam_role(iam_client, config.role_name)
 
         # Step 4: Create Snowflake external volume
         click.echo("─" * 40)
@@ -820,9 +900,8 @@ def create(
         )
         click.echo()
 
-        # Wait for trust policy propagation
-        click.echo("Waiting for trust policy propagation...")
-        time.sleep(10)
+        # Wait for trust policy propagation with backoff
+        wait_for_trust_policy(iam_client, config.role_name, sf_props["iam_user_arn"])
 
         # Step 7: Verify
         if not skip_verify:
