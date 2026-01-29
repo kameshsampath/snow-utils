@@ -728,6 +728,13 @@ def cli(
     is_flag=True,
     help="Preview what would be created without making changes",
 )
+@click.option(
+    "--output",
+    "-o",
+    type=click.Choice(["text", "json"]),
+    default="text",
+    help="Output format (default: text)",
+)
 @click.pass_context
 def create(
     ctx: click.Context,
@@ -740,6 +747,7 @@ def create(
     no_writes: bool,
     skip_verify: bool,
     dry_run: bool,
+    output: str,
 ) -> None:
     """
     Create S3 bucket, IAM role, and Snowflake external volume.
@@ -768,6 +776,9 @@ def create(
 
         extvolume create --bucket iceberg-data --dry-run
         # Preview resources without creating them
+
+        extvolume create --bucket iceberg-data --output json
+        # Output results as JSON for automation
     """
     # Validate bucket name (no dots allowed)
     if "." in bucket:
@@ -798,27 +809,60 @@ def create(
         allow_writes=not no_writes,
     )
 
-    click.echo("=" * 60)
-    click.echo("Snowflake External Volume Manager - Create")
-    if dry_run:
-        click.echo("  [DRY RUN - No changes will be made]")
-    click.echo("=" * 60)
-    click.echo()
-    click.echo(f"Prefix:           {prefix or '(none)'}")
-    click.echo()
-    click.echo("AWS Resources (lowercase, hyphens):")
-    click.echo(f"  Bucket:           {config.bucket_name}")
-    click.echo(f"  IAM Role:         {config.role_name}")
-    click.echo(f"  IAM Policy:       {config.policy_name}")
-    click.echo(f"  Storage Location: {config.storage_location_name}")
-    click.echo()
-    click.echo("Snowflake Objects (UPPERCASE, underscores):")
-    click.echo(f"  External Volume:  {config.volume_name}")
-    click.echo(f"  External ID:      {config.external_id}")
-    click.echo()
-    click.echo(f"Region:           {config.aws_region}")
-    click.echo(f"Allow Writes:     {config.allow_writes}")
-    click.echo()
+    # Helper to build result dict for JSON output
+    def build_result(
+        status: str, account_id: str | None = None, role_arn: str | None = None
+    ) -> dict:
+        result = {
+            "status": status,
+            "prefix": prefix,
+            "aws": {
+                "bucket": config.bucket_name,
+                "role": config.role_name,
+                "policy": config.policy_name,
+                "storage_location": config.storage_location_name,
+                "region": config.aws_region,
+            },
+            "snowflake": {
+                "external_volume": config.volume_name,
+                "external_id": config.external_id,
+                "allow_writes": config.allow_writes,
+            },
+        }
+        if account_id:
+            result["aws"]["account_id"] = account_id
+        if role_arn:
+            result["aws"]["role_arn"] = role_arn
+        return result
+
+    # JSON output for dry-run
+    if output == "json" and dry_run:
+        click.echo(json.dumps(build_result("dry_run"), indent=2))
+        return
+
+    # Text output header
+    if output == "text":
+        click.echo("=" * 60)
+        click.echo("Snowflake External Volume Manager - Create")
+        if dry_run:
+            click.echo("  [DRY RUN - No changes will be made]")
+        click.echo("=" * 60)
+        click.echo()
+        click.echo(f"Prefix:           {prefix or '(none)'}")
+        click.echo()
+        click.echo("AWS Resources (lowercase, hyphens):")
+        click.echo(f"  Bucket:           {config.bucket_name}")
+        click.echo(f"  IAM Role:         {config.role_name}")
+        click.echo(f"  IAM Policy:       {config.policy_name}")
+        click.echo(f"  Storage Location: {config.storage_location_name}")
+        click.echo()
+        click.echo("Snowflake Objects (UPPERCASE, underscores):")
+        click.echo(f"  External Volume:  {config.volume_name}")
+        click.echo(f"  External ID:      {config.external_id}")
+        click.echo()
+        click.echo(f"Region:           {config.aws_region}")
+        click.echo(f"Allow Writes:     {config.allow_writes}")
+        click.echo()
 
     if dry_run:
         click.echo("─" * 40)
@@ -835,8 +879,9 @@ def create(
 
     account_id = get_aws_account_id(sts_client)
     policy_arn = f"arn:aws:iam::{account_id}:policy/{config.policy_name}"
-    click.echo(f"AWS Account ID: {account_id}")
-    click.echo()
+    if output == "text":
+        click.echo(f"AWS Account ID: {account_id}")
+        click.echo()
 
     # Track what we've created for potential rollback
     created_bucket = False
@@ -936,6 +981,11 @@ def create(
     except Exception as e:
         rollback_aws_resources()
         raise click.ClickException(f"Unexpected error: {e}")
+
+    # JSON output for successful creation
+    if output == "json":
+        click.echo(json.dumps(build_result("success", account_id, role_arn), indent=2))
+        return
 
     click.echo("=" * 60)
     click.echo("✓ External volume setup completed successfully!")

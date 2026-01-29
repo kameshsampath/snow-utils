@@ -482,6 +482,13 @@ def cli(ctx: click.Context, verbose: bool, debug: bool) -> None:
     is_flag=True,
     help="Preview what would be created without making changes",
 )
+@click.option(
+    "--output",
+    "-o",
+    type=click.Choice(["text", "json"]),
+    default="text",
+    help="Output format (default: text)",
+)
 def create_command(
     user: str,
     role: str,
@@ -495,6 +502,7 @@ def create_command(
     default_expiry_days: int,
     max_expiry_days: int,
     dry_run: bool,
+    output: str,
 ) -> None:
     """
     Create or rotate a PAT for a service user.
@@ -529,14 +537,10 @@ def create_command(
 
         # Preview without creating
         python pat.py create --user my_user --role demo_role --db my_db --dry-run
-    """
-    click.echo("=" * 50)
-    click.echo("Snowflake PAT Manager")
-    if dry_run:
-        click.echo("  [DRY RUN - No changes will be made]")
-    click.echo("=" * 50)
-    click.echo()
 
+        # Output results as JSON for automation
+        python pat.py create --user my_user --role demo_role --db my_db --output json
+    """
     # Set default admin_role to role if not provided
     if not admin_role:
         admin_role = role
@@ -545,20 +549,55 @@ def create_command(
     if not pat_name:
         pat_name = f"{user}_pat".upper()
 
-    # Get local IP if not provided
-    if not local_ip:
-        click.echo("Detecting local IP...")
-        local_ip = get_local_ip()
-        click.echo(f"✓ Local IP: {local_ip}")
+    # Helper to build result dict for JSON output
+    def build_result(status: str, token: str | None = None) -> dict:
+        result = {
+            "status": status,
+            "user": user,
+            "pat_name": pat_name,
+            "pat_role": role,
+            "admin_role": admin_role,
+            "database": db,
+            "resources": {
+                "network_rule": f"{db}.NETWORKS.{user}_NETWORK_RULE".upper(),
+                "network_policy": f"{user}_NETWORK_POLICY".upper(),
+                "auth_policy": f"{db}.POLICIES.{user}_AUTH_POLICY".upper(),
+            },
+        }
+        if token:
+            result["token"] = token
+        return result
 
-    click.echo()
-    click.echo(f"User:       {user}")
-    click.echo(f"PAT Role:   {role} (role restriction for PAT)")
-    click.echo(f"Admin Role: {admin_role} (for creating policies)")
-    click.echo(f"Database:   {db}")
-    click.echo(f"PAT Name:   {pat_name}")
-    click.echo(f"Local IP:   {local_ip}")
-    click.echo()
+    # Get local IP if not provided (needed for both text and JSON output)
+    if not local_ip:
+        if output == "text":
+            click.echo("Detecting local IP...")
+        local_ip = get_local_ip()
+        if output == "text":
+            click.echo(f"✓ Local IP: {local_ip}")
+
+    # JSON output for dry-run
+    if output == "json" and dry_run:
+        result = build_result("dry_run")
+        result["local_ip"] = local_ip
+        click.echo(json.dumps(result, indent=2))
+        return
+
+    # Text output header
+    if output == "text":
+        click.echo("=" * 50)
+        click.echo("Snowflake PAT Manager")
+        if dry_run:
+            click.echo("  [DRY RUN - No changes will be made]")
+        click.echo("=" * 50)
+        click.echo()
+        click.echo(f"User:       {user}")
+        click.echo(f"PAT Role:   {role} (role restriction for PAT)")
+        click.echo(f"Admin Role: {admin_role} (for creating policies)")
+        click.echo(f"Database:   {db}")
+        click.echo(f"PAT Name:   {pat_name}")
+        click.echo(f"Local IP:   {local_ip}")
+        click.echo()
 
     if dry_run:
         click.echo("─" * 40)
@@ -589,11 +628,20 @@ def create_command(
     password = create_or_rotate_pat(user=user, pat_role=role, pat_name=pat_name, rotate=rotate)
 
     # Step 5: Update .env (stores the PAT role)
-    update_env(env_path=env_path, user=user, password=password, pat_role=role)
+    if output == "text":
+        update_env(env_path=env_path, user=user, password=password, pat_role=role)
 
     # Step 6: Verify connection
-    if not skip_verify:
+    if not skip_verify and output == "text":
         verify_connection(user=user, password=password, pat_role=role)
+
+    # JSON output for successful creation
+    if output == "json":
+        result = build_result("success", password)
+        result["local_ip"] = local_ip
+        result["env_file"] = str(env_path)
+        click.echo(json.dumps(result, indent=2))
+        return
 
     click.echo()
     click.echo("=" * 50)
