@@ -477,6 +477,11 @@ def cli(ctx: click.Context, verbose: bool, debug: bool) -> None:
     type=int,
     help="Maximum PAT expiry in days (default: 90)",
 )
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    help="Preview what would be created without making changes",
+)
 def create_command(
     user: str,
     role: str,
@@ -489,6 +494,7 @@ def create_command(
     local_ip: str | None,
     default_expiry_days: int,
     max_expiry_days: int,
+    dry_run: bool,
 ) -> None:
     """
     Create or rotate a PAT for a service user.
@@ -520,9 +526,14 @@ def create_command(
 
         # Using CLI arguments (admin-role defaults to role if not specified)
         python pat.py create --user my_user --role demo_role --admin-role sysadmin --db my_db
+
+        # Preview without creating
+        python pat.py create --user my_user --role demo_role --db my_db --dry-run
     """
     click.echo("=" * 50)
     click.echo("Snowflake PAT Manager")
+    if dry_run:
+        click.echo("  [DRY RUN - No changes will be made]")
     click.echo("=" * 50)
     click.echo()
 
@@ -546,8 +557,22 @@ def create_command(
     click.echo(f"Admin Role: {admin_role} (for creating policies)")
     click.echo(f"Database:   {db}")
     click.echo(f"PAT Name:   {pat_name}")
-
+    click.echo(f"Local IP:   {local_ip}")
     click.echo()
+
+    if dry_run:
+        click.echo("─" * 40)
+        click.echo("Resources that would be created:")
+        click.echo(f"  Service User:     {user}")
+        click.echo(f"  Network Rule:     {db}.NETWORKS.{user}_NETWORK_RULE".upper())
+        click.echo(f"  Network Policy:   {user}_NETWORK_POLICY".upper())
+        click.echo(f"  Auth Policy:      {db}.POLICIES.{user}_AUTH_POLICY".upper())
+        click.echo(f"  PAT:              {pat_name}")
+        click.echo("─" * 40)
+        click.echo()
+        click.echo("Dry run complete. No resources were created.")
+        click.echo("To create these resources, run without --dry-run")
+        return
 
     # Step 1: Setup service user (grants the PAT role to user)
     setup_service_user(user=user, pat_role=role)

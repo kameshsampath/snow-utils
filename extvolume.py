@@ -723,6 +723,11 @@ def cli(
     is_flag=True,
     help="Skip external volume verification",
 )
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    help="Preview what would be created without making changes",
+)
 @click.pass_context
 def create(
     ctx: click.Context,
@@ -734,6 +739,7 @@ def create(
     external_id: str | None,
     no_writes: bool,
     skip_verify: bool,
+    dry_run: bool,
 ) -> None:
     """
     Create S3 bucket, IAM role, and Snowflake external volume.
@@ -759,6 +765,9 @@ def create(
 
         extvolume --no-prefix create --bucket my-bucket
         # Creates: my-bucket (S3), MY_BUCKET_EXTERNAL_VOLUME (Snowflake)
+
+        extvolume create --bucket iceberg-data --dry-run
+        # Preview resources without creating them
     """
     # Validate bucket name (no dots allowed)
     if "." in bucket:
@@ -791,6 +800,8 @@ def create(
 
     click.echo("=" * 60)
     click.echo("Snowflake External Volume Manager - Create")
+    if dry_run:
+        click.echo("  [DRY RUN - No changes will be made]")
     click.echo("=" * 60)
     click.echo()
     click.echo(f"Prefix:           {prefix or '(none)'}")
@@ -808,6 +819,14 @@ def create(
     click.echo(f"Region:           {config.aws_region}")
     click.echo(f"Allow Writes:     {config.allow_writes}")
     click.echo()
+
+    if dry_run:
+        click.echo("─" * 40)
+        click.echo("Dry run complete. No resources were created.")
+        click.echo("─" * 40)
+        click.echo()
+        click.echo("To create these resources, run without --dry-run")
+        return
 
     # Initialize AWS clients
     s3_client = boto3.client("s3", region_name=region)
