@@ -11,82 +11,17 @@ import os
 import re
 import shutil
 import subprocess
-from dataclasses import dataclass
 from pathlib import Path
 
 import click
 import requests
 
-
-@dataclass
-class SnowCLIOptions:
-    """Options for snow CLI commands."""
-
-    verbose: bool = False
-    debug: bool = False
-
-    def get_flags(self) -> list[str]:
-        """Get CLI flags based on options."""
-        flags = []
-        if self.debug:
-            flags.append("--debug")
-        elif self.verbose:
-            flags.append("--verbose")
-        return flags
-
-
-# Global options (set by CLI group)
-_snow_cli_options = SnowCLIOptions()
-
-
-def set_snow_cli_options(verbose: bool = False, debug: bool = False) -> None:
-    """Set global snow CLI options."""
-    global _snow_cli_options
-    _snow_cli_options = SnowCLIOptions(verbose=verbose, debug=debug)
-
-
-def run_snow_sql(query: str, *, format: str = "json", check: bool = True) -> dict | list | None:
-    """Execute a snow sql command and return parsed JSON output."""
-    cmd = ["snow", "sql", *_snow_cli_options.get_flags(), "--query", query, "--format", format]
-
-    if _snow_cli_options.debug:
-        click.echo(f"[DEBUG] Running: {' '.join(cmd)}")
-
-    result = subprocess.run(cmd, capture_output=True, text=True)
-
-    if _snow_cli_options.debug and result.stderr:
-        click.echo(f"[DEBUG] stderr: {result.stderr}")
-
-    if check and result.returncode != 0:
-        raise click.ClickException(f"snow sql failed: {result.stderr}")
-
-    if format == "json" and result.stdout.strip():
-        try:
-            return json.loads(result.stdout)
-        except json.JSONDecodeError:
-            return None
-    return None
-
-
-def run_snow_sql_stdin(sql: str, *, check: bool = True) -> subprocess.CompletedProcess:
-    """Execute multi-statement SQL via stdin."""
-    cmd = ["snow", "sql", *_snow_cli_options.get_flags(), "--stdin"]
-
-    if _snow_cli_options.debug:
-        click.echo(f"[DEBUG] Running: {' '.join(cmd)}")
-        click.echo(f"[DEBUG] SQL:\n{sql}")
-
-    result = subprocess.run(cmd, input=sql, capture_output=True, text=True)
-
-    if _snow_cli_options.debug and result.stderr:
-        click.echo(f"[DEBUG] stderr: {result.stderr}")
-    if _snow_cli_options.debug and result.stdout:
-        click.echo(f"[DEBUG] stdout: {result.stdout}")
-
-    if check and result.returncode != 0:
-        raise click.ClickException(f"snow sql failed: {result.stderr}")
-
-    return result
+from snow_common import (
+    get_snow_cli_options,
+    run_snow_sql,
+    run_snow_sql_stdin,
+    set_snow_cli_options,
+)
 
 
 def get_local_ip() -> str:
@@ -385,7 +320,7 @@ def verify_connection(user: str, password: str, pat_role: str) -> None:
     cmd = [
         "snow",
         "sql",
-        *_snow_cli_options.get_flags(),
+        *get_snow_cli_options().get_flags(),
         "-x",
         "--user",
         user,
@@ -397,7 +332,7 @@ def verify_connection(user: str, password: str, pat_role: str) -> None:
         "SELECT current_timestamp()",
     ]
 
-    if _snow_cli_options.debug:
+    if get_snow_cli_options().debug:
         click.echo(f"[DEBUG] Running: {' '.join(cmd)}")
 
     result = subprocess.run(
@@ -407,7 +342,7 @@ def verify_connection(user: str, password: str, pat_role: str) -> None:
         text=True,
     )
 
-    if _snow_cli_options.debug and result.stderr:
+    if get_snow_cli_options().debug and result.stderr:
         click.echo(f"[DEBUG] stderr: {result.stderr}")
 
     if result.returncode != 0:
