@@ -734,72 +734,110 @@ def create(
     sts_client = boto3.client("sts")
 
     account_id = get_aws_account_id(sts_client)
+    policy_arn = f"arn:aws:iam::{account_id}:policy/{config.policy_name}"
     click.echo(f"AWS Account ID: {account_id}")
     click.echo()
 
-    # Step 1: Create S3 bucket
-    click.echo("─" * 40)
-    click.echo("Step 1: Create S3 Bucket")
-    click.echo("─" * 40)
-    create_s3_bucket(s3_client, config.bucket_name, region)
-    click.echo()
+    # Track what we've created for potential rollback
+    created_bucket = False
+    created_policy = False
+    created_role = False
 
-    # Step 2: Create IAM policy
-    click.echo("─" * 40)
-    click.echo("Step 2: Create IAM Policy")
-    click.echo("─" * 40)
-    policy_arn = create_iam_policy(iam_client, config.policy_name, config.bucket_name)
-    click.echo()
-
-    # Step 3: Create IAM role with initial trust policy
-    click.echo("─" * 40)
-    click.echo("Step 3: Create IAM Role")
-    click.echo("─" * 40)
-    role_arn = create_iam_role(
-        iam_client, config.role_name, policy_arn, account_id, config.external_id
-    )
-    click.echo()
-
-    # Wait a bit for IAM propagation
-    click.echo("Waiting for IAM propagation...")
-    time.sleep(10)
-
-    # Step 4: Create Snowflake external volume
-    click.echo("─" * 40)
-    click.echo("Step 4: Create Snowflake External Volume")
-    click.echo("─" * 40)
-    create_external_volume(config, role_arn)
-    click.echo()
-
-    # Step 5: Get Snowflake IAM user ARN
-    click.echo("─" * 40)
-    click.echo("Step 5: Retrieve Snowflake IAM User")
-    click.echo("─" * 40)
-    sf_props = describe_external_volume(config.volume_name)
-    click.echo()
-
-    # Step 6: Update trust policy
-    click.echo("─" * 40)
-    click.echo("Step 6: Update IAM Trust Policy")
-    click.echo("─" * 40)
-    # Use the external ID from Snowflake if different from what we specified
-    actual_external_id = sf_props.get("external_id", config.external_id)
-    update_role_trust_policy(
-        iam_client, config.role_name, sf_props["iam_user_arn"], actual_external_id
-    )
-    click.echo()
-
-    # Wait for trust policy propagation
-    click.echo("Waiting for trust policy propagation...")
-    time.sleep(10)
-
-    # Step 7: Verify
-    if not skip_verify:
-        click.echo("─" * 40)
-        click.echo("Step 7: Verify External Volume")
-        click.echo("─" * 40)
-        verify_external_volume(config.volume_name)
+    def rollback_aws_resources() -> None:
+        """Clean up AWS resources on failure."""
         click.echo()
+        click.echo("─" * 40)
+        click.echo("Rolling back AWS resources...")
+        click.echo("─" * 40)
+        if created_role:
+            try:
+                delete_iam_role(iam_client, config.role_name, policy_arn)
+            except Exception as e:
+                click.echo(f"⚠ Failed to delete role: {e}")
+        if created_policy:
+            try:
+                delete_iam_policy(iam_client, policy_arn)
+            except Exception as e:
+                click.echo(f"⚠ Failed to delete policy: {e}")
+        if created_bucket:
+            try:
+                delete_s3_bucket(s3_client, config.bucket_name, force=False)
+            except Exception as e:
+                click.echo(f"⚠ Failed to delete bucket: {e}")
+
+    try:
+        # Step 1: Create S3 bucket
+        click.echo("─" * 40)
+        click.echo("Step 1: Create S3 Bucket")
+        click.echo("─" * 40)
+        created_bucket = create_s3_bucket(s3_client, config.bucket_name, region)
+        click.echo()
+
+        # Step 2: Create IAM policy
+        click.echo("─" * 40)
+        click.echo("Step 2: Create IAM Policy")
+        click.echo("─" * 40)
+        policy_arn = create_iam_policy(iam_client, config.policy_name, config.bucket_name)
+        created_policy = True
+        click.echo()
+
+        # Step 3: Create IAM role with initial trust policy
+        click.echo("─" * 40)
+        click.echo("Step 3: Create IAM Role")
+        click.echo("─" * 40)
+        role_arn = create_iam_role(
+            iam_client, config.role_name, policy_arn, account_id, config.external_id
+        )
+        created_role = True
+        click.echo()
+
+        # Wait a bit for IAM propagation
+        click.echo("Waiting for IAM propagation...")
+        time.sleep(10)
+
+        # Step 4: Create Snowflake external volume
+        click.echo("─" * 40)
+        click.echo("Step 4: Create Snowflake External Volume")
+        click.echo("─" * 40)
+        create_external_volume(config, role_arn)
+        click.echo()
+
+        # Step 5: Get Snowflake IAM user ARN
+        click.echo("─" * 40)
+        click.echo("Step 5: Retrieve Snowflake IAM User")
+        click.echo("─" * 40)
+        sf_props = describe_external_volume(config.volume_name)
+        click.echo()
+
+        # Step 6: Update trust policy
+        click.echo("─" * 40)
+        click.echo("Step 6: Update IAM Trust Policy")
+        click.echo("─" * 40)
+        # Use the external ID from Snowflake if different from what we specified
+        actual_external_id = sf_props.get("external_id", config.external_id)
+        update_role_trust_policy(
+            iam_client, config.role_name, sf_props["iam_user_arn"], actual_external_id
+        )
+        click.echo()
+
+        # Wait for trust policy propagation
+        click.echo("Waiting for trust policy propagation...")
+        time.sleep(10)
+
+        # Step 7: Verify
+        if not skip_verify:
+            click.echo("─" * 40)
+            click.echo("Step 7: Verify External Volume")
+            click.echo("─" * 40)
+            verify_external_volume(config.volume_name)
+            click.echo()
+
+    except click.ClickException:
+        rollback_aws_resources()
+        raise
+    except Exception as e:
+        rollback_aws_resources()
+        raise click.ClickException(f"Unexpected error: {e}")
 
     click.echo("=" * 60)
     click.echo("✓ External volume setup completed successfully!")
