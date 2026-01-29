@@ -45,8 +45,19 @@ def get_snowflake_account() -> str:
     if result.returncode != 0:
         raise click.ClickException(f"Failed to test connection: {result.stderr}")
 
-    data = json.loads(result.stdout)
-    return data.get("Account", "")
+    try:
+        data = json.loads(result.stdout)
+    except json.JSONDecodeError as e:
+        raise click.ClickException(
+            f"Invalid JSON from connection test: {e}\nOutput: {result.stdout[:500]}"
+        )
+
+    account = data.get("Account")
+    if not account:
+        raise click.ClickException(
+            f"Account not found in connection test response: {list(data.keys())}"
+        )
+    return account
 
 
 def setup_service_user(user: str, pat_role: str) -> None:

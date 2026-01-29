@@ -146,7 +146,13 @@ def create_s3_bucket(
             click.echo(f"✓ Bucket {bucket_name} already exists")
             return False
         except ClientError as e:
-            if e.response["Error"]["Code"] != "404":
+            error_code = e.response["Error"]["Code"]
+            if error_code == "403":
+                raise click.ClickException(
+                    f"Bucket {bucket_name} exists but you don't have access. "
+                    "Choose a different bucket name."
+                )
+            if error_code != "404":
                 raise
 
         # Create bucket with location constraint for non-us-east-1 regions
@@ -421,10 +427,18 @@ def describe_external_volume(volume_name: str) -> dict[str, str]:
     """Describe external volume and extract AWS IAM user ARN and external ID."""
     click.echo(f"Describing external volume: {volume_name}")
 
-    result = run_snow_sql(f"DESC EXTERNAL VOLUME {volume_name}")
+    try:
+        result = run_snow_sql(f"DESC EXTERNAL VOLUME {volume_name}")
+    except click.ClickException as e:
+        raise click.ClickException(
+            f"Failed to describe external volume '{volume_name}'. "
+            f"Verify the volume exists and you have access.\nError: {e}"
+        )
 
     if not result:
-        raise click.ClickException("Failed to describe external volume")
+        raise click.ClickException(
+            f"No data returned when describing external volume '{volume_name}'"
+        )
 
     # Parse the result to find STORAGE_AWS_IAM_USER_ARN and STORAGE_AWS_EXTERNAL_ID
     properties = {}
