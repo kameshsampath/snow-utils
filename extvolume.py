@@ -481,25 +481,26 @@ def delete_iam_role(iam_client: Any, role_name: str, policy_arn: str) -> None:
 # =============================================================================
 
 
+def get_external_volume_sql(config: ExternalVolumeConfig, role_arn: str) -> str:
+    """Generate SQL for creating external volume."""
+    allow_writes = "TRUE" if config.allow_writes else "FALSE"
+    return f"""CREATE OR REPLACE EXTERNAL VOLUME {config.volume_name}
+    STORAGE_LOCATIONS = (
+        (
+            NAME = '{config.storage_location_name}'
+            STORAGE_PROVIDER = 'S3'
+            STORAGE_BASE_URL = 's3://{config.bucket_name}/'
+            STORAGE_AWS_ROLE_ARN = '{role_arn}'
+            STORAGE_AWS_EXTERNAL_ID = '{config.external_id}'
+        )
+    )
+    ALLOW_WRITES = {allow_writes};"""
+
+
 def create_external_volume(config: ExternalVolumeConfig, role_arn: str) -> None:
     """Create Snowflake external volume."""
     click.echo(f"Creating Snowflake external volume: {config.volume_name}")
-
-    allow_writes = "TRUE" if config.allow_writes else "FALSE"
-
-    sql = f"""
-        CREATE OR REPLACE EXTERNAL VOLUME {config.volume_name}
-            STORAGE_LOCATIONS = (
-                (
-                    NAME = '{config.storage_location_name}'
-                    STORAGE_PROVIDER = 'S3'
-                    STORAGE_BASE_URL = 's3://{config.bucket_name}/'
-                    STORAGE_AWS_ROLE_ARN = '{role_arn}'
-                    STORAGE_AWS_EXTERNAL_ID = '{config.external_id}'
-                )
-            )
-            ALLOW_WRITES = {allow_writes};
-    """
+    sql = get_external_volume_sql(config, role_arn)
     run_snow_sql_stdin(sql)
     click.echo(f"✓ Created external volume: {config.volume_name}")
 
@@ -865,10 +866,51 @@ def create(
         click.echo()
 
     if dry_run:
-        click.echo("─" * 40)
-        click.echo("Dry run complete. No resources were created.")
-        click.echo("─" * 40)
+        # For dry-run, try to get account_id but use placeholder if AWS creds unavailable
+        try:
+            sts_client = boto3.client("sts")
+            account_id = get_aws_account_id(sts_client)
+        except Exception:
+            account_id = "<AWS_ACCOUNT_ID>"
+            click.echo("⚠ AWS credentials not available - using placeholders")
+            click.echo()
+        role_arn = f"arn:aws:iam::{account_id}:role/{config.role_name}"
+
+        click.echo("─" * 60)
+        click.echo("AWS operations that would be performed:")
+        click.echo("─" * 60)
         click.echo()
+        click.echo("-- Step 1: Create S3 bucket with versioning")
+        click.echo(f"aws s3api create-bucket --bucket {config.bucket_name} --region {region}")
+        click.echo(f"aws s3api put-bucket-versioning --bucket {config.bucket_name} \\")
+        click.echo("    --versioning-configuration Status=Enabled")
+        click.echo()
+        click.echo("-- Step 2: Create IAM policy")
+        click.echo(f"# Policy: arn:aws:iam::{account_id}:policy/{config.policy_name}")
+        click.echo(f"# Grants s3:GetObject, s3:PutObject, s3:DeleteObject on {config.bucket_name}")
+        click.echo()
+        click.echo("-- Step 3: Create IAM role with trust policy")
+        click.echo(f"# Role: {role_arn}")
+        click.echo(f"# External ID: {config.external_id}")
+        click.echo()
+        click.echo("─" * 60)
+        click.echo("Snowflake SQL that would be executed:")
+        click.echo("─" * 60)
+        click.echo()
+        click.echo("-- Step 4: Create external volume")
+        click.echo(get_external_volume_sql(config, role_arn))
+        click.echo()
+        click.echo("-- Step 5: Retrieve Snowflake IAM user ARN")
+        click.echo(f"DESC EXTERNAL VOLUME {config.volume_name};")
+        click.echo()
+        click.echo("-- Step 6: Update IAM trust policy with Snowflake IAM user ARN")
+        click.echo("# (AWS API call to update assume role policy)")
+        click.echo()
+        click.echo("-- Step 7: Verify external volume")
+        click.echo(f"SELECT SYSTEM$VERIFY_EXTERNAL_VOLUME('{config.volume_name}');")
+        click.echo()
+        click.echo("─" * 60)
+        click.echo("Dry run complete. No resources were created.")
         click.echo("To create these resources, run without --dry-run")
         return
 

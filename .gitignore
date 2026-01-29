@@ -9,3 +9,6 @@ wheels/
 # Virtual environments
 .venv
 task/
+
+# Environment files with secrets
+.env

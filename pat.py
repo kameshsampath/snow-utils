@@ -60,25 +60,57 @@ def get_snowflake_account() -> str:
     return account
 
 
+def get_service_user_sql(user: str, pat_role: str) -> str:
+    """Generate SQL for creating service user."""
+    return f"""USE ROLE accountadmin;
+CREATE USER IF NOT EXISTS {user}
+    TYPE = SERVICE
+    COMMENT = 'Service user for PAT access';
+GRANT ROLE {pat_role} TO USER {user};"""
+
+
 def setup_service_user(user: str, pat_role: str) -> None:
     """Create service user and grant the PAT role."""
     click.echo(f"Setting up service user: {user}")
-
-    sql = f"""
-        USE ROLE accountadmin;
-        CREATE USER IF NOT EXISTS {user}
-            TYPE = SERVICE
-            COMMENT = 'Service user for PAT access';
-        GRANT ROLE {pat_role} TO USER {user};
-    """
+    sql = get_service_user_sql(user, pat_role)
     run_snow_sql_stdin(sql)
     click.echo(f"✓ Service user {user} configured with role {pat_role}")
 
 
+def get_network_policy_sql(user: str, admin_role: str, db: str, local_ip: str) -> str:
+    """Generate SQL for creating network rule and policy."""
+    network_rule_name = f"{user}_network_rule".upper()
+    network_policy_name = f"{user}_network_policy".upper()
+    cidr_list = f"'{local_ip}'"
+
+    return f"""USE ROLE {admin_role};
+GRANT CREATE NETWORK RULE ON SCHEMA {db}.networks TO ROLE accountadmin;
+GRANT CREATE AUTHENTICATION POLICY ON SCHEMA {db}.policies TO ROLE accountadmin;
+
+CREATE DATABASE IF NOT EXISTS {db};
+USE DATABASE {db};
+
+CREATE SCHEMA IF NOT EXISTS networks;
+CREATE SCHEMA IF NOT EXISTS policies;
+CREATE SCHEMA IF NOT EXISTS data;
+
+CREATE OR REPLACE NETWORK RULE {db}.networks.{network_rule_name}
+    MODE = ingress
+    TYPE = ipv4
+    VALUE_LIST = ({cidr_list})
+    COMMENT = 'Network rule for {user} PAT access';
+
+USE ROLE accountadmin;
+
+CREATE OR REPLACE NETWORK POLICY {network_policy_name}
+    ALLOWED_NETWORK_RULE_LIST = ({db}.networks.{network_rule_name})
+    COMMENT = 'Network policy for {user} PAT access';
+
+ALTER USER {user} SET NETWORK_POLICY = '{network_policy_name}';"""
+
+
 def setup_network_policy(user: str, admin_role: str, db: str, local_ip: str) -> None:
     """Create network rule and policy for the service user using admin_role."""
-
-    # Derive policy names from user
     network_rule_name = f"{user}_network_rule".upper()
     network_policy_name = f"{user}_network_policy".upper()
     click.echo(f"Setting up network policy for user {user}")
@@ -96,44 +128,29 @@ DROP NETWORK POLICY IF EXISTS {network_policy_name};
         check=False,
     )
 
-    cidr_list = f"'{local_ip}'"
-
-    sql = f"""
-        USE ROLE {admin_role};
-        GRANT CREATE NETWORK RULE ON SCHEMA {db}.networks TO ROLE accountadmin;
-        GRANT CREATE AUTHENTICATION POLICY ON SCHEMA {db}.policies TO ROLE accountadmin;
-
-        CREATE DATABASE IF NOT EXISTS {db};
-        USE DATABASE {db};
-
-        CREATE SCHEMA IF NOT EXISTS networks;
-        CREATE SCHEMA IF NOT EXISTS policies;
-        CREATE SCHEMA IF NOT EXISTS data;
-
-        CREATE OR REPLACE NETWORK RULE {db}.networks.{network_rule_name}
-            MODE = ingress
-            TYPE = ipv4
-            VALUE_LIST = ({cidr_list})
-            COMMENT = 'Network rule for {user} PAT access';
-
-        USE ROLE accountadmin;
-
-        CREATE OR REPLACE NETWORK POLICY {network_policy_name}
-            ALLOWED_NETWORK_RULE_LIST = ({db}.networks.{network_rule_name})
-            COMMENT = 'Network policy for {user} PAT access';
-
-        ALTER USER {user} SET NETWORK_POLICY = '{network_policy_name}';
-    """
+    sql = get_network_policy_sql(user, admin_role, db, local_ip)
     run_snow_sql_stdin(sql)
     click.echo("✓ Network policy configured")
+
+
+def get_auth_policy_sql(user: str, db: str, default_expiry_days: int, max_expiry_days: int) -> str:
+    """Generate SQL for creating authentication policy."""
+    auth_policy_name = f"{user}_auth_policy".upper()
+
+    return f"""CREATE OR ALTER AUTHENTICATION POLICY {db}.policies.{auth_policy_name}
+    AUTHENTICATION_METHODS = ('PROGRAMMATIC_ACCESS_TOKEN')
+    PAT_POLICY = (
+        default_expiry_in_days = {default_expiry_days},
+        max_expiry_in_days = {max_expiry_days},
+        network_policy_evaluation = ENFORCED_REQUIRED
+    );
+
+ALTER USER {user} SET AUTHENTICATION POLICY {db}.policies.{auth_policy_name};"""
 
 
 def setup_auth_policy(user: str, db: str, default_expiry_days: int, max_expiry_days: int) -> None:
     """Create authentication policy for PAT access."""
     click.echo("Setting up authentication policy...")
-
-    # Derive auth policy name from user
-    auth_policy_name = f"{user}_auth_policy".upper()
 
     # First, unset any existing auth policy (ignore errors)
     run_snow_sql(
@@ -141,17 +158,7 @@ def setup_auth_policy(user: str, db: str, default_expiry_days: int, max_expiry_d
         check=False,
     )
 
-    sql = f"""
-        CREATE OR ALTER AUTHENTICATION POLICY {db}.policies.{auth_policy_name}
-            AUTHENTICATION_METHODS = ('PROGRAMMATIC_ACCESS_TOKEN')
-            PAT_POLICY = (
-                default_expiry_in_days = {default_expiry_days},
-                max_expiry_in_days = {max_expiry_days},
-                network_policy_evaluation = ENFORCED_REQUIRED
-            );
-
-        ALTER USER {user} SET AUTHENTICATION POLICY {db}.policies.{auth_policy_name};
-    """
+    sql = get_auth_policy_sql(user, db, default_expiry_days, max_expiry_days)
     run_snow_sql_stdin(sql)
     click.echo("✓ Authentication policy configured")
 
@@ -168,6 +175,11 @@ def get_existing_pat(user: str, pat_name: str) -> str | None:
             return pat.get("name")
 
     return None
+
+
+def get_pat_sql(user: str, pat_role: str, pat_name: str) -> str:
+    """Generate SQL for creating PAT."""
+    return f"ALTER USER IF EXISTS {user} ADD PAT {pat_name} ROLE_RESTRICTION = {pat_role};"
 
 
 def create_or_rotate_pat(user: str, pat_role: str, pat_name: str, rotate: bool = False) -> str:
@@ -600,15 +612,31 @@ def create_command(
         click.echo()
 
     if dry_run:
-        click.echo("─" * 40)
+        click.echo("─" * 60)
         click.echo("Resources that would be created:")
         click.echo(f"  Service User:     {user}")
         click.echo(f"  Network Rule:     {db}.NETWORKS.{user}_NETWORK_RULE".upper())
         click.echo(f"  Network Policy:   {user}_NETWORK_POLICY".upper())
         click.echo(f"  Auth Policy:      {db}.POLICIES.{user}_AUTH_POLICY".upper())
         click.echo(f"  PAT:              {pat_name}")
-        click.echo("─" * 40)
+        click.echo("─" * 60)
         click.echo()
+        click.echo("SQL that would be executed:")
+        click.echo("─" * 60)
+        click.echo()
+        click.echo("-- Step 1: Create service user")
+        click.echo(get_service_user_sql(user, role))
+        click.echo()
+        click.echo("-- Step 2: Create network rule and policy")
+        click.echo(get_network_policy_sql(user, admin_role, db, local_ip))
+        click.echo()
+        click.echo("-- Step 3: Create authentication policy")
+        click.echo(get_auth_policy_sql(user, db, default_expiry_days, max_expiry_days))
+        click.echo()
+        click.echo("-- Step 4: Create PAT")
+        click.echo(get_pat_sql(user, role, pat_name))
+        click.echo()
+        click.echo("─" * 60)
         click.echo("Dry run complete. No resources were created.")
         click.echo("To create these resources, run without --dry-run")
         return
