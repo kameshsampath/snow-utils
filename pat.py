@@ -708,4 +708,4 @@ def remove_command(
 
 
 if __name__ == "__main__":
-    cli()  # type: ignore[call-arg] # noqa: S101
+    cli()

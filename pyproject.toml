@@ -1,5 +1,5 @@
 [project]
-name = "bin"
+name = "snow-bin-utils"
 version = "0.1.0"
 description = "Snowflake utility tools for PAT management and external volumes"
 readme = "README.md"
