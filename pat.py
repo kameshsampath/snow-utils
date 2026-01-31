@@ -313,16 +313,36 @@ def cli(ctx: click.Context, verbose: bool, debug: bool) -> None:
 @click.option("--db", "-d", envvar="PAT_OBJECTS_DB", required=True, help="Database for PAT objects")
 @click.option("--pat-name", default=None, envvar="PAT_NAME", help="Name for the PAT token")
 @click.option("--rotate/--no-rotate", default=True, help="Rotate existing PAT (default: True)")
-@click.option("--env-path", type=click.Path(path_type=Path), default=Path(".env"), help=".env file path")
+@click.option(
+    "--env-path",
+    type=click.Path(path_type=Path),
+    default=Path(".env"),
+    help=".env file path",
+)
 @click.option("--skip-verify", is_flag=True, help="Skip connection verification")
-@click.option("--with-local/--no-local", "with_local", default=True, help="Include local IP (default: True)")
+@click.option(
+    "--with-local/--no-local",
+    "with_local",
+    default=True,
+    help="Include local IP (default: True)",
+)
 @click.option("--with-gh", is_flag=True, default=False, help="Include GitHub Actions IPs")
 @click.option("--with-google", is_flag=True, default=False, help="Include Google IPs")
 @click.option("--extra-cidrs", multiple=True, help="Additional CIDRs (can be repeated)")
 @click.option("--default-expiry-days", default=45, type=int, help="Default PAT expiry days")
 @click.option("--max-expiry-days", default=90, type=int, help="Maximum PAT expiry days")
 @click.option("--dry-run", is_flag=True, help="Preview without making changes")
-@click.option("--output", "-o", type=click.Choice(["text", "json"]), default="text", help="Output format")
+@click.option(
+    "--force", "-f",
+    is_flag=True,
+    help="Overwrite existing network rule/policy (CREATE OR REPLACE)",
+)
+@click.option(
+    "--output", "-o",
+    type=click.Choice(["text", "json"]),
+    default="text",
+    help="Output format",
+)
 def create_command(
     user: str,
     role: str,
@@ -338,6 +358,7 @@ def create_command(
     default_expiry_days: int,
     max_expiry_days: int,
     dry_run: bool,
+    force: bool,
     output: str,
 ) -> None:
     """
@@ -377,7 +398,8 @@ def create_command(
     )
     if not cidrs:
         raise click.ClickException(
-            "Network policy required for PAT security. Use --with-local (default), --with-gh, --with-google, or --extra-cidrs"
+            "Network policy required for PAT security. "
+            "Use --with-local (default), --with-gh, --with-google, or --extra-cidrs"
         )
 
     def build_result(status: str, token: str | None = None) -> dict:
@@ -438,13 +460,18 @@ def create_command(
     setup_service_user(user=user, pat_role=role)
 
     click.echo(f"Setting up network rule and policy ({len(cidrs)} CIDRs)...")
-    rule_fqn, policy_name = setup_network_for_user(user=user, db=db, cidrs=cidrs)
+    rule_fqn, policy_name = setup_network_for_user(user=user, db=db, cidrs=cidrs, force=force)
     click.echo(f"✓ Network rule: {rule_fqn}")
     click.echo(f"✓ Network policy: {policy_name}")
     assign_network_policy_to_user(user, policy_name)
     click.echo(f"✓ Assigned network policy to user {user}")
 
-    setup_auth_policy(user=user, db=db, default_expiry_days=default_expiry_days, max_expiry_days=max_expiry_days)
+    setup_auth_policy(
+        user=user,
+        db=db,
+        default_expiry_days=default_expiry_days,
+        max_expiry_days=max_expiry_days,
+    )
 
     password = create_or_rotate_pat(user=user, pat_role=role, pat_name=pat_name, rotate=rotate)
 
@@ -473,7 +500,12 @@ def create_command(
 @click.option("--pat-name", default=None, envvar="PAT_NAME", help="Name of the PAT to remove")
 @click.option("--drop-user", is_flag=True, help="Also drop the service user")
 @click.option("--pat-only", is_flag=True, help="Only remove PAT, keep policies")
-@click.option("--env-path", type=click.Path(path_type=Path), default=Path(".env"), help=".env file path")
+@click.option(
+    "--env-path",
+    type=click.Path(path_type=Path),
+    default=Path(".env"),
+    help=".env file path",
+)
 @click.confirmation_option(prompt="Remove PAT and associated objects?")
 def remove_command(
     user: str,

@@ -9,9 +9,10 @@ Provides:
 - CIDR collection utility
 """
 
-import requests
 from enum import Enum
 from functools import lru_cache
+
+import requests
 
 
 class NetworkRuleMode(str, Enum):

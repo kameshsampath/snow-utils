@@ -32,6 +32,7 @@ def get_network_rule_sql(
     mode: NetworkRuleMode = NetworkRuleMode.INGRESS,
     rule_type: NetworkRuleType = NetworkRuleType.IPV4,
     comment: str = "",
+    force: bool = False,
 ) -> str:
     """
     Generate SQL for creating a network rule.
@@ -50,7 +51,8 @@ def get_network_rule_sql(
     """
     value_list = ", ".join(f"'{v}'" for v in values)
     comment_text = comment or "Created by snow-utils"
-    return f"""CREATE OR REPLACE NETWORK RULE {db}.{schema}.{name}
+    create_stmt = "CREATE OR REPLACE" if force else "CREATE IF NOT EXISTS"
+    return f"""{create_stmt} NETWORK RULE {db}.{schema}.{name}
     MODE = {mode.value}
     TYPE = {rule_type.value}
     VALUE_LIST = ({value_list})
@@ -61,6 +63,7 @@ def get_network_policy_sql(
     policy_name: str,
     rule_refs: list[str],
     comment: str = "",
+    force: bool = False,
 ) -> str:
     """
     Generate SQL for creating a network policy from rules.
@@ -75,7 +78,8 @@ def get_network_policy_sql(
     """
     rule_list = ", ".join(rule_refs)
     comment_text = comment or "Created by snow-utils"
-    return f"""CREATE OR REPLACE NETWORK POLICY {policy_name}
+    create_stmt = "CREATE OR REPLACE" if force else "CREATE IF NOT EXISTS"
+    return f"""{create_stmt} NETWORK POLICY {policy_name}
     ALLOWED_NETWORK_RULE_LIST = ({rule_list})
     COMMENT = '{comment_text}';"""
 
@@ -108,6 +112,7 @@ def create_network_rule(
     rule_type: NetworkRuleType = NetworkRuleType.IPV4,
     comment: str = "",
     dry_run: bool = False,
+    force: bool = False,
 ) -> str:
     """
     Create a network rule in Snowflake.
@@ -135,12 +140,15 @@ def create_network_rule(
             f"Valid types: {valid}"
         )
 
-    sql = get_network_rule_sql(name, db, schema, values, mode, rule_type, comment)
+    sql = get_network_rule_sql(name, db, schema, values, mode, rule_type, comment, force)
 
     if dry_run:
         click.echo(sql)
     else:
-        setup_sql = f"CREATE DATABASE IF NOT EXISTS {db};\nCREATE SCHEMA IF NOT EXISTS {db}.{schema};\n"
+        setup_sql = (
+            f"CREATE DATABASE IF NOT EXISTS {db};\n"
+            f"CREATE SCHEMA IF NOT EXISTS {db}.{schema};\n"
+        )
         run_snow_sql_stdin(setup_sql + sql)
 
     return f"{db}.{schema}.{name}"
@@ -151,6 +159,7 @@ def create_network_policy(
     rule_refs: list[str],
     comment: str = "",
     dry_run: bool = False,
+    force: bool = False,
 ) -> None:
     """
     Create a network policy referencing given rules.
@@ -161,7 +170,7 @@ def create_network_policy(
         comment: Optional comment
         dry_run: If True, only print SQL without executing
     """
-    sql = get_network_policy_sql(policy_name, rule_refs, comment)
+    sql = get_network_policy_sql(policy_name, rule_refs, comment, force)
 
     if dry_run:
         click.echo(sql)
@@ -222,6 +231,7 @@ def setup_network_for_user(
     cidrs: list[str],
     schema: str = "NETWORKS",
     dry_run: bool = False,
+    force: bool = False,
 ) -> tuple[str, str]:
     """
     Create network rule and policy for a user (idempotent).
@@ -251,6 +261,7 @@ def setup_network_for_user(
         rule_type=NetworkRuleType.IPV4,
         comment=f"Network rule for {user} access",
         dry_run=dry_run,
+        force=force,
     )
 
     create_network_policy(
@@ -258,6 +269,7 @@ def setup_network_for_user(
         rule_refs=[rule_fqn],
         comment=f"Network policy for {user} access",
         dry_run=dry_run,
+        force=force,
     )
 
     return rule_fqn, policy_name
@@ -323,7 +335,12 @@ def cli(ctx: click.Context, verbose: bool, debug: bool) -> None:
 @cli.command()
 @click.option("--name", "-n", required=True, envvar="NW_RULE_NAME", help="Network rule name")
 @click.option("--db", required=True, envvar="NW_RULE_DB", help="Database for rule")
-@click.option("--schema", "-s", default="NETWORKS", envvar="NW_RULE_SCHEMA", help="Schema (default: NETWORKS)")
+@click.option(
+    "--schema", "-s",
+    default="NETWORKS",
+    envvar="NW_RULE_SCHEMA",
+    help="Schema (default: NETWORKS)",
+)
 @click.option(
     "--mode", "-m",
     type=click.Choice(MODE_CHOICES, case_sensitive=False),
@@ -337,11 +354,24 @@ def cli(ctx: click.Context, verbose: bool, debug: bool) -> None:
     help="Value type (default: ipv4)",
 )
 @click.option("--values", help="Comma-separated values (CIDRs, hosts, VPC IDs)")
-@click.option("--with-local/--no-local", default=True, help="Include local IP (IPV4 only, default: ON)")
+@click.option(
+    "--with-local/--no-local",
+    default=True,
+    help="Include local IP (IPV4 only, default: ON)",
+)
 @click.option("--with-gh", "-G", is_flag=True, help="Include GitHub Actions IPs (IPV4 only)")
 @click.option("--with-google", "-g", is_flag=True, help="Include Google IPs (IPV4 only)")
 @click.option("--dry-run", is_flag=True, help="Preview SQL without executing")
-@click.option("--policy", "-p", "policy_name", help="Also create/update network policy with this name")
+@click.option(
+    "--force", "-f",
+    is_flag=True,
+    help="Overwrite existing rule/policy (CREATE OR REPLACE)",
+)
+@click.option(
+    "--policy", "-p",
+    "policy_name",
+    help="Also create/update network policy with this name",
+)
 @click.option(
     "--policy-mode",
     type=click.Choice(["create", "alter"], case_sensitive=False),
@@ -359,6 +389,7 @@ def create(
     with_gh: bool,
     with_google: bool,
     dry_run: bool,
+    force: bool,
     policy_name: str | None,
     policy_mode: str,
 ) -> None:
@@ -408,7 +439,10 @@ def create(
     if not all_values:
         raise click.ClickException("No values specified.")
 
-    click.echo(f"Creating {mode.upper()} network rule ({rule_type.upper()}) with {len(all_values)} value(s)...")
+    click.echo(
+        f"Creating {mode.upper()} network rule ({rule_type.upper()}) "
+        f"with {len(all_values)} value(s)..."
+    )
 
     fqn = create_network_rule(
         name.upper(),
@@ -418,6 +452,7 @@ def create(
         mode_enum,
         type_enum,
         dry_run=dry_run,
+        force=force,
     )
 
     if not dry_run:
@@ -432,7 +467,7 @@ def create(
                 click.echo(f"✓ Updated policy: {policy_upper}")
         else:
             click.echo(f"Creating policy: {policy_upper}")
-            create_network_policy(policy_upper, [fqn], dry_run=dry_run)
+            create_network_policy(policy_upper, [fqn], dry_run=dry_run, force=force)
             if not dry_run:
                 click.echo(f"✓ Created policy: {policy_upper}")
 
@@ -445,6 +480,7 @@ def create(
 @click.option("--policy", "-p", "policy_name", help="Also create/update network policy")
 @click.option("--policy-mode", type=click.Choice(["create", "alter"]), default="create")
 @click.option("--dry-run", is_flag=True, help="Preview SQL without executing")
+@click.option("--force", "-f", is_flag=True, help="Overwrite existing rule/policy")
 @click.pass_context
 def github(
     ctx: click.Context,
@@ -455,6 +491,7 @@ def github(
     policy_name: str | None,
     policy_mode: str,
     dry_run: bool,
+    force: bool,
 ) -> None:
     """Create INGRESS IPV4 rule for GitHub Actions IPs."""
     ctx.invoke(
@@ -469,6 +506,7 @@ def github(
         with_gh=True,
         with_google=False,
         dry_run=dry_run,
+        force=force,
         policy_name=policy_name,
         policy_mode=policy_mode,
     )
@@ -482,6 +520,7 @@ def github(
 @click.option("--policy", "-p", "policy_name", help="Also create/update network policy")
 @click.option("--policy-mode", type=click.Choice(["create", "alter"]), default="create")
 @click.option("--dry-run", is_flag=True, help="Preview SQL without executing")
+@click.option("--force", "-f", is_flag=True, help="Overwrite existing rule/policy")
 @click.pass_context
 def google(
     ctx: click.Context,
@@ -492,6 +531,7 @@ def google(
     policy_name: str | None,
     policy_mode: str,
     dry_run: bool,
+    force: bool,
 ) -> None:
     """Create INGRESS IPV4 rule for Google IPs."""
     ctx.invoke(
@@ -506,6 +546,7 @@ def google(
         with_gh=False,
         with_google=True,
         dry_run=dry_run,
+        force=force,
         policy_name=policy_name,
         policy_mode=policy_mode,
     )
@@ -518,6 +559,7 @@ def google(
 @click.option("--policy", "-p", "policy_name", help="Also create/update network policy")
 @click.option("--policy-mode", type=click.Choice(["create", "alter"]), default="create")
 @click.option("--dry-run", is_flag=True, help="Preview SQL without executing")
+@click.option("--force", "-f", is_flag=True, help="Overwrite existing rule/policy")
 @click.pass_context
 def local_cmd(
     ctx: click.Context,
@@ -527,6 +569,7 @@ def local_cmd(
     policy_name: str | None,
     policy_mode: str,
     dry_run: bool,
+    force: bool,
 ) -> None:
     """Create INGRESS IPV4 rule for current IP only."""
     ctx.invoke(
@@ -541,6 +584,7 @@ def local_cmd(
         with_gh=False,
         with_google=False,
         dry_run=dry_run,
+        force=force,
         policy_name=policy_name,
         policy_mode=policy_mode,
     )
@@ -610,10 +654,19 @@ def list_policies_cmd() -> None:
 
 @cli.command()
 @click.option("--name", "-n", required=True, help="Network policy name")
-@click.option("--rules", "-r", required=True, help="Comma-separated fully qualified rule names (db.schema.rule)")
-@click.option("--alter", "-a", is_flag=True, help="Add rules to existing policy instead of creating new")
+@click.option(
+    "--rules", "-r",
+    required=True,
+    help="Comma-separated fully qualified rule names (db.schema.rule)",
+)
+@click.option(
+    "--alter", "-a",
+    is_flag=True,
+    help="Add rules to existing policy instead of creating new",
+)
 @click.option("--dry-run", is_flag=True, help="Preview SQL without executing")
-def policy(name: str, rules: str, alter: bool, dry_run: bool) -> None:
+@click.option("--force", "-f", is_flag=True, help="Overwrite existing policy (CREATE OR REPLACE)")
+def policy(name: str, rules: str, alter: bool, dry_run: bool, force: bool) -> None:
     """
     Create or alter a network policy with specified rules.
 
@@ -635,7 +688,7 @@ def policy(name: str, rules: str, alter: bool, dry_run: bool) -> None:
             click.echo(f"✓ Updated: {policy_name}")
     else:
         click.echo(f"Creating policy {policy_name} with {len(rule_refs)} rule(s)...")
-        create_network_policy(policy_name, rule_refs, dry_run=dry_run)
+        create_network_policy(policy_name, rule_refs, dry_run=dry_run, force=force)
         if not dry_run:
             click.echo(f"✓ Created: {policy_name}")
 
