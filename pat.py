@@ -427,7 +427,7 @@ def create_command(
         click.echo("-- Step 2: Create network rule and policy")
         click.echo(f"-- (via network.setup_network_for_user with {len(cidrs)} CIDRs)")
         click.echo()
-        click.echo("-- Step 3: Create authentication policy"
+        click.echo("-- Step 3: Create authentication policy")
         click.echo(get_auth_policy_sql(user, db, default_expiry_days, max_expiry_days))
         click.echo()
         click.echo("-- Step 4: Create PAT")

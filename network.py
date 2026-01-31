@@ -322,7 +322,7 @@ def cli(ctx: click.Context, verbose: bool, debug: bool) -> None:
 
 @cli.command()
 @click.option("--name", "-n", required=True, envvar="NW_RULE_NAME", help="Network rule name")
-@click.option("--db", "-d", required=True, envvar="NW_RULE_DB", help="Database for rule")
+@click.option("--db", required=True, envvar="NW_RULE_DB", help="Database for rule")
 @click.option("--schema", "-s", default="NETWORKS", envvar="NW_RULE_SCHEMA", help="Schema (default: NETWORKS)")
 @click.option(
     "--mode", "-m",
@@ -438,9 +438,9 @@ def create(
 
 
 @cli.command()
-@click.option("--name", "-n", required=True, help="Network rule name")
-@click.option("--db", "-d", required=True, help="Database name")
-@click.option("--schema", "-s", default="NETWORKS", help="Schema name")
+@click.option("--name", "-n", required=True, envvar="NW_RULE_NAME", help="Network rule name")
+@click.option("--db", required=True, envvar="NW_RULE_DB", help="Database name")
+@click.option("--schema", "-s", default="NETWORKS", envvar="NW_RULE_SCHEMA", help="Schema name")
 @click.option("--with-local", is_flag=True, default=False, help="Also include local IP")
 @click.option("--policy", "-p", "policy_name", help="Also create/update network policy")
 @click.option("--policy-mode", type=click.Choice(["create", "alter"]), default="create")
@@ -475,9 +475,9 @@ def github(
 
 
 @cli.command()
-@click.option("--name", "-n", required=True, help="Network rule name")
-@click.option("--db", "-d", required=True, help="Database name")
-@click.option("--schema", "-s", default="NETWORKS", help="Schema name")
+@click.option("--name", "-n", required=True, envvar="NW_RULE_NAME", help="Network rule name")
+@click.option("--db", required=True, envvar="NW_RULE_DB", help="Database name")
+@click.option("--schema", "-s", default="NETWORKS", envvar="NW_RULE_SCHEMA", help="Schema name")
 @click.option("--with-local", is_flag=True, default=False, help="Also include local IP")
 @click.option("--policy", "-p", "policy_name", help="Also create/update network policy")
 @click.option("--policy-mode", type=click.Choice(["create", "alter"]), default="create")
@@ -512,9 +512,9 @@ def google(
 
 
 @cli.command(name="local")
-@click.option("--name", "-n", required=True, help="Network rule name")
-@click.option("--db", "-d", required=True, help="Database name")
-@click.option("--schema", "-s", default="NETWORKS", help="Schema name")
+@click.option("--name", "-n", required=True, envvar="NW_RULE_NAME", help="Network rule name")
+@click.option("--db", required=True, envvar="NW_RULE_DB", help="Database name")
+@click.option("--schema", "-s", default="NETWORKS", envvar="NW_RULE_SCHEMA", help="Schema name")
 @click.option("--policy", "-p", "policy_name", help="Also create/update network policy")
 @click.option("--policy-mode", type=click.Choice(["create", "alter"]), default="create")
 @click.option("--dry-run", is_flag=True, help="Preview SQL without executing")
@@ -547,9 +547,9 @@ def local_cmd(
 
 
 @cli.command(name="delete-rule")
-@click.option("--name", "-n", required=True, help="Network rule name")
-@click.option("--db", "-d", required=True, help="Database name")
-@click.option("--schema", "-s", default="NETWORKS", help="Schema name")
+@click.option("--name", "-n", required=True, envvar="NW_RULE_NAME", help="Network rule name")
+@click.option("--db", required=True, envvar="NW_RULE_DB", help="Database name")
+@click.option("--schema", "-s", default="NETWORKS", envvar="NW_RULE_SCHEMA", help="Schema name")
 @click.confirmation_option(prompt="Delete this network rule?")
 def delete_rule_cmd(name: str, db: str, schema: str) -> None:
     """Delete a network rule."""
@@ -575,8 +575,8 @@ def delete_policy_cmd(name: str, user: str | None) -> None:
 
 
 @cli.command(name="list-rules")
-@click.option("--db", "-d", required=True, help="Database name")
-@click.option("--schema", "-s", default="NETWORKS", help="Schema name")
+@click.option("--db", required=True, envvar="NW_RULE_DB", help="Database name")
+@click.option("--schema", "-s", default="NETWORKS", envvar="NW_RULE_SCHEMA", help="Schema name")
 def list_rules_cmd(db: str, schema: str) -> None:
     """List network rules in schema."""
     click.echo(f"Network rules in {db}.{schema}:".upper())
