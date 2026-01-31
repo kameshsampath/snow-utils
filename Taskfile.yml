@@ -13,6 +13,7 @@ vars:
   # CLI scripts
   PAT_CLI: "{{.PYTHON}} {{.TASKFILE_DIR}}/pat.py"
   EXTVOLUME_CLI: "{{.PYTHON}} {{.TASKFILE_DIR}}/extvolume.py"
+  NETWORK_CLI: "{{.PYTHON}} {{.TASKFILE_DIR}}/network.py"
   # Default bucket name for demos
   BUCKET: iceberg-demo
   # AWS region
@@ -142,6 +143,168 @@ tasks:
       SA_USER: '{{.SA_USER | default ""}}'
       PAT_OBJECTS_DB: '{{.PAT_OBJECTS_DB | default ""}}'
       DOT_ENV_FILE: '{{.DOT_ENV_FILE | default ""}}'
+
+  # ===========================================================================
+  # Network Rule & Policy Tasks
+  # ===========================================================================
+
+  networks:create:
+    desc: Create a network rule with optional policy
+    summary: |
+      Creates a Snowflake network rule with optional network policy.
+
+      Supports IPv4 presets (GitHub Actions, Google, local IP) and custom values.
+
+      Environment variables (can be set in .env):
+        NW_RULE_NAME: Network rule name
+        NW_RULE_DB: Database for network rule
+        NW_RULE_SCHEMA: Schema for network rule (default: NETWORKS)
+
+      Options:
+        --mode: Rule mode (ingress, egress, internal_stage, postgres_ingress, postgres_egress)
+        --type: Value type (ipv4, host_port, private_host_port, awsvpceid)
+        --with-local: Include local public IP (default for ipv4)
+        --with-gh: Include GitHub Actions IPs
+        --with-google: Include Google IPs
+        --values: Custom comma-separated values
+        --policy: Also create/update a network policy
+        --policy-mode: create (default) or alter existing policy
+
+      Example:
+        task networks:create NW_RULE_NAME=dev_rule NW_RULE_DB=my_db
+        task networks:create NW_RULE_NAME=ci_rule NW_RULE_DB=my_db -- --with-gh
+        task networks:create NW_RULE_NAME=api_egress NW_RULE_DB=my_db -- --mode egress --type host_port --values "api.example.com:443"
+    cmds:
+      - "{{.NETWORK_CLI}} create {{.CLI_ARGS}}"
+    env:
+      NW_RULE_NAME: "{{.NW_RULE_NAME}}"
+      NW_RULE_DB: "{{.NW_RULE_DB}}"
+      NW_RULE_SCHEMA: "{{.NW_RULE_SCHEMA}}"
+    vars:
+      NW_RULE_NAME: '{{.NW_RULE_NAME | default ""}}'
+      NW_RULE_DB: '{{.NW_RULE_DB | default ""}}'
+      NW_RULE_SCHEMA: '{{.NW_RULE_SCHEMA | default "NETWORKS"}}'
+
+  networks:github:
+    desc: Create network rule for GitHub Actions IPs
+    summary: |
+      Creates an INGRESS IPV4 network rule containing GitHub Actions runner IPs.
+      Useful for CI/CD pipelines that need to access Snowflake.
+
+      Example:
+        task networks:github NW_RULE_NAME=github_actions NW_RULE_DB=my_db
+        task networks:github NW_RULE_NAME=github_actions NW_RULE_DB=my_db -- --policy ci_policy
+    cmds:
+      - "{{.NETWORK_CLI}} github {{.CLI_ARGS}}"
+    env:
+      NW_RULE_NAME: "{{.NW_RULE_NAME}}"
+      NW_RULE_DB: "{{.NW_RULE_DB}}"
+      NW_RULE_SCHEMA: "{{.NW_RULE_SCHEMA}}"
+    vars:
+      NW_RULE_NAME: '{{.NW_RULE_NAME | default ""}}'
+      NW_RULE_DB: '{{.NW_RULE_DB | default ""}}'
+      NW_RULE_SCHEMA: '{{.NW_RULE_SCHEMA | default "NETWORKS"}}'
+
+  networks:google:
+    desc: Create network rule for Google IPs
+    summary: |
+      Creates an INGRESS IPV4 network rule containing Google IP ranges.
+      Useful for Google Apps Script, Cloud Functions, etc.
+
+      Example:
+        task networks:google NW_RULE_NAME=google_ips NW_RULE_DB=my_db
+    cmds:
+      - "{{.NETWORK_CLI}} google {{.CLI_ARGS}}"
+    env:
+      NW_RULE_NAME: "{{.NW_RULE_NAME}}"
+      NW_RULE_DB: "{{.NW_RULE_DB}}"
+      NW_RULE_SCHEMA: "{{.NW_RULE_SCHEMA}}"
+    vars:
+      NW_RULE_NAME: '{{.NW_RULE_NAME | default ""}}'
+      NW_RULE_DB: '{{.NW_RULE_DB | default ""}}'
+      NW_RULE_SCHEMA: '{{.NW_RULE_SCHEMA | default "NETWORKS"}}'
+
+  networks:local:
+    desc: Create network rule for current IP only
+    summary: |
+      Creates an INGRESS IPV4 network rule containing only your current public IP.
+      Most restrictive option - useful for development.
+
+      Example:
+        task networks:local NW_RULE_NAME=dev_local NW_RULE_DB=my_db
+    cmds:
+      - "{{.NETWORK_CLI}} local {{.CLI_ARGS}}"
+    env:
+      NW_RULE_NAME: "{{.NW_RULE_NAME}}"
+      NW_RULE_DB: "{{.NW_RULE_DB}}"
+      NW_RULE_SCHEMA: "{{.NW_RULE_SCHEMA}}"
+    vars:
+      NW_RULE_NAME: '{{.NW_RULE_NAME | default ""}}'
+      NW_RULE_DB: '{{.NW_RULE_DB | default ""}}'
+      NW_RULE_SCHEMA: '{{.NW_RULE_SCHEMA | default "NETWORKS"}}'
+
+  networks:policy:
+    desc: Create or alter a network policy
+    summary: |
+      Creates a new network policy or adds rules to an existing one.
+
+      Example:
+        task networks:policy -- --name my_policy --rules "DB.NETWORKS.RULE1,DB.NETWORKS.RULE2"
+        task networks:policy -- --name my_policy --rules "DB.NETWORKS.RULE3" --alter
+    cmds:
+      - "{{.NETWORK_CLI}} policy {{.CLI_ARGS}}"
+
+  networks:list-rules:
+    desc: List network rules in a schema
+    summary: |
+      Lists all network rules in the specified database/schema.
+
+      Example:
+        task networks:list-rules NW_RULE_DB=my_db
+        task networks:list-rules NW_RULE_DB=my_db NW_RULE_SCHEMA=NETWORKS
+    cmds:
+      - "{{.NETWORK_CLI}} list-rules {{.CLI_ARGS}}"
+    env:
+      NW_RULE_DB: "{{.NW_RULE_DB}}"
+      NW_RULE_SCHEMA: "{{.NW_RULE_SCHEMA}}"
+    vars:
+      NW_RULE_DB: '{{.NW_RULE_DB | default ""}}'
+      NW_RULE_SCHEMA: '{{.NW_RULE_SCHEMA | default "NETWORKS"}}'
+
+  networks:list-policies:
+    desc: List all network policies
+    cmds:
+      - "{{.NETWORK_CLI}} list-policies"
+
+  networks:delete-rule:
+    desc: Delete a network rule
+    summary: |
+      Deletes a network rule from Snowflake.
+
+      Example:
+        task networks:delete-rule NW_RULE_NAME=old_rule NW_RULE_DB=my_db
+    cmds:
+      - "{{.NETWORK_CLI}} delete-rule --yes {{.CLI_ARGS}}"
+    env:
+      NW_RULE_NAME: "{{.NW_RULE_NAME}}"
+      NW_RULE_DB: "{{.NW_RULE_DB}}"
+      NW_RULE_SCHEMA: "{{.NW_RULE_SCHEMA}}"
+    vars:
+      NW_RULE_NAME: '{{.NW_RULE_NAME | default ""}}'
+      NW_RULE_DB: '{{.NW_RULE_DB | default ""}}'
+      NW_RULE_SCHEMA: '{{.NW_RULE_SCHEMA | default "NETWORKS"}}'
+
+  networks:delete-policy:
+    desc: Delete a network policy
+    summary: |
+      Deletes a network policy from Snowflake.
+      Optionally unsets from a user first.
+
+      Example:
+        task networks:delete-policy -- --name my_policy
+        task networks:delete-policy -- --name my_policy --user my_user
+    cmds:
+      - "{{.NETWORK_CLI}} delete-policy --yes {{.CLI_ARGS}}"
 
   # ===========================================================================
   # External Volume Tasks
@@ -458,3 +621,8 @@ tasks:
     desc: Show pat CLI options
     cmds:
       - "{{.PAT_CLI}} --help"
+
+  help:networks:
+    desc: Show network CLI options
+    cmds:
+      - "{{.NETWORK_CLI}} --help"
