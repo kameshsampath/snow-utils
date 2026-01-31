@@ -65,7 +65,7 @@ def get_network_rule_sql(
     """
     value_list = ", ".join(f"'{v}'" for v in values)
     comment_text = comment or "Created by snow-utils"
-    create_stmt = "CREATE OR REPLACE" if force else "CREATE IF NOT EXISTS"
+    create_stmt = "CREATE OR REPLACE" if force else "CREATE"
     return f"""{create_stmt} NETWORK RULE {db}.{schema}.{name}
     MODE = {mode.value}
     TYPE = {rule_type.value}
@@ -92,7 +92,7 @@ def get_network_policy_sql(
     """
     rule_list = ", ".join(rule_refs)
     comment_text = comment or "Created by snow-utils"
-    create_stmt = "CREATE OR REPLACE" if force else "CREATE IF NOT EXISTS"
+    create_stmt = "CREATE OR REPLACE" if force else "CREATE"
     return f"""{create_stmt} NETWORK POLICY {policy_name}
     ALLOWED_NETWORK_RULE_LIST = ({rule_list})
     COMMENT = '{comment_text}';"""
