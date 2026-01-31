@@ -31,9 +31,16 @@ echo "Syncing scripts to $SKILLS_REPO..."
 cp extvolume.py "$SKILLS_REPO/iceberg-external-volume/scripts/"
 cp snow_common.py "$SKILLS_REPO/iceberg-external-volume/scripts/"
 
-# Sync pat
+# Sync pat (needs network.py and network_presets.py for imports)
 cp pat.py "$SKILLS_REPO/snowflake-pat/scripts/"
 cp snow_common.py "$SKILLS_REPO/snowflake-pat/scripts/"
+cp network.py "$SKILLS_REPO/snowflake-pat/scripts/"
+cp network_presets.py "$SKILLS_REPO/snowflake-pat/scripts/"
+
+# Sync networks
+cp network.py "$SKILLS_REPO/snowflake-networks/scripts/"
+cp network_presets.py "$SKILLS_REPO/snowflake-networks/scripts/"
+cp snow_common.py "$SKILLS_REPO/snowflake-networks/scripts/"
 
 echo "✓ Scripts synced"
 
@@ -48,8 +55,10 @@ if [ "$1" = "--reload" ]; then
     echo "Reloading skills..."
     cortex skill remove "$SKILLS_REPO/iceberg-external-volume" 2>/dev/null
     cortex skill remove "$SKILLS_REPO/snowflake-pat" 2>/dev/null
+    cortex skill remove "$SKILLS_REPO/snowflake-networks" 2>/dev/null
     cortex skill add "$SKILLS_REPO/iceberg-external-volume"
     cortex skill add "$SKILLS_REPO/snowflake-pat"
+    cortex skill add "$SKILLS_REPO/snowflake-networks"
     echo "✓ Skills reloaded"
     
     echo ""

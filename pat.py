@@ -335,13 +335,13 @@ def cli(ctx: click.Context, verbose: bool, debug: bool) -> None:
 )
 @click.option("--skip-verify", is_flag=True, help="Skip connection verification")
 @click.option(
-    "--with-local/--no-local",
-    "with_local",
+    "--allow-local/--no-local",
+    "allow_local",
     default=True,
     help="Include local IP (default: True)",
 )
-@click.option("--with-gh", is_flag=True, default=False, help="Include GitHub Actions IPs")
-@click.option("--with-google", is_flag=True, default=False, help="Include Google IPs")
+@click.option("--allow-gh", is_flag=True, default=False, help="Include GitHub Actions IPs")
+@click.option("--allow-google", is_flag=True, default=False, help="Include Google IPs")
 @click.option("--extra-cidrs", multiple=True, help="Additional CIDRs (can be repeated)")
 @click.option("--default-expiry-days", default=45, type=int, help="Default PAT expiry days")
 @click.option("--max-expiry-days", default=90, type=int, help="Maximum PAT expiry days")
@@ -365,9 +365,9 @@ def create_command(
     rotate: bool,
     env_path: Path,
     skip_verify: bool,
-    with_local: bool,
-    with_gh: bool,
-    with_google: bool,
+    allow_local: bool,
+    allow_gh: bool,
+    allow_google: bool,
     extra_cidrs: tuple[str, ...],
     default_expiry_days: int,
     max_expiry_days: int,
@@ -379,7 +379,7 @@ def create_command(
     Create or rotate a PAT for a service user.
 
     Network policy is REQUIRED for PAT security (Snowflake best practice).
-    By default, includes local IP. Use --with-gh/--with-google for CI/CD access.
+    By default, includes local IP. Use --allow-gh/--allow-google for CI/CD access.
 
     \b
     Steps:
@@ -396,24 +396,24 @@ def create_command(
         pat.py create --user my_sa --role demo_role --db my_db
 
         # Include GitHub Actions IPs for CI/CD
-        pat.py create --user ci_sa --role ci_role --db my_db --with-gh
+        pat.py create --user ci_sa --role ci_role --db my_db --allow-gh
 
         # Multiple IP sources
-        pat.py create --user my_sa --role demo_role --db my_db --with-gh --with-google
+        pat.py create --user my_sa --role demo_role --db my_db --allow-gh --allow-google
     """
     if not pat_name:
         pat_name = f"{user}_pat".upper()
 
     cidrs = collect_ipv4_cidrs(
-        with_local=with_local,
-        with_gh=with_gh,
-        with_google=with_google,
+        allow_local=allow_local,
+        allow_gh=allow_gh,
+        allow_google=allow_google,
         extra_cidrs=list(extra_cidrs) if extra_cidrs else None,
     )
     if not cidrs:
         raise click.ClickException(
             "Network policy required for PAT security. "
-            "Use --with-local (default), --with-gh, --with-google, or --extra-cidrs"
+            "Use --allow-local (default), --allow-gh, --allow-google, or --extra-cidrs"
         )
 
     def build_result(status: str, token: str | None = None) -> dict:
