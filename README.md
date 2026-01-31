@@ -165,7 +165,21 @@ snow-utils aws:whoami
 ## External Volume Management (AWS)
 
 > [!NOTE]
-> **📚 Snowflake Docs:** [Configure External Volume](https://docs.snowflake.com/user-guide/tables-iceberg-configure-external-volume) · [External Volume for S3](https://docs.snowflake.com/user-guide/tables-iceberg-configure-external-volume-s3) · [Create Iceberg Tables](https://docs.snowflake.com/user-guide/tables-iceberg-create)
+> **Snowflake Docs:**
+> - [CREATE EXTERNAL VOLUME](https://docs.snowflake.com/en/sql-reference/sql/create-external-volume)
+> - [Configure External Volume](https://docs.snowflake.com/user-guide/tables-iceberg-configure-external-volume)
+> - [External Volume for S3](https://docs.snowflake.com/user-guide/tables-iceberg-configure-external-volume-s3)
+
+### Required Privileges
+
+| Platform | Role/Permissions | Purpose |
+|----------|------------------|--------|
+| **Snowflake** | `ACCOUNTADMIN` or role with `CREATE EXTERNAL VOLUME` | Create/drop external volumes |
+| **AWS** | `s3:CreateBucket`, `s3:PutObject`, `s3:GetObject`, `s3:DeleteObject` | S3 bucket operations |
+| **AWS** | `iam:CreateRole`, `iam:CreatePolicy`, `iam:AttachRolePolicy`, `iam:UpdateAssumeRolePolicy` | IAM role/policy management |
+
+> [!TIP]
+> Use `ACCOUNTADMIN` for simplicity, or create a custom role with `GRANT CREATE EXTERNAL VOLUME ON ACCOUNT TO ROLE my_role`.
 
 ### What Gets Created
 
@@ -234,7 +248,33 @@ snow-utils extvolume:delete BUCKET=my-data -- --delete-bucket --force
 ## PAT Management
 
 > [!NOTE]
-> **📚 Snowflake Docs:** [Programmatic Access Tokens](https://docs.snowflake.com/en/user-guide/programmatic-access-tokens) · [ALTER USER ADD PAT](https://docs.snowflake.com/en/sql-reference/sql/alter-user-add-programmatic-access-token)
+> **Snowflake Docs:**
+> - [Programmatic Access Tokens](https://docs.snowflake.com/en/user-guide/programmatic-access-tokens)
+> - [ALTER USER ADD PAT](https://docs.snowflake.com/en/sql-reference/sql/alter-user-add-programmatic-access-token)
+> - [CREATE USER (TYPE=SERVICE)](https://docs.snowflake.com/en/sql-reference/sql/create-user)
+> - [CREATE AUTHENTICATION POLICY](https://docs.snowflake.com/en/sql-reference/sql/create-authentication-policy)
+> - [CREATE NETWORK RULE](https://docs.snowflake.com/en/sql-reference/sql/create-network-rule)
+> - [CREATE NETWORK POLICY](https://docs.snowflake.com/en/sql-reference/sql/create-network-policy)
+
+### Required Privileges
+
+| Role | Privileges Needed | Used For |
+|------|-------------------|----------|
+| **SA_ADMIN_ROLE** | `CREATE USER` | Create the service user |
+| **SA_ADMIN_ROLE** | `CREATE SCHEMA` on database | Create POLICIES and NETWORKS schemas |
+| **SA_ADMIN_ROLE** | `CREATE AUTHENTICATION POLICY` | Create auth policy for PAT |
+| **SA_ADMIN_ROLE** | `CREATE NETWORK RULE`, `CREATE NETWORK POLICY` | Create network restrictions |
+| **SA_ADMIN_ROLE** | `GRANT ROLE` | Grant SA_ROLE to service user |
+| **SA_ROLE** | (must exist) | Role the PAT will be restricted to |
+
+> [!TIP]
+> `ACCOUNTADMIN` or `SECURITYADMIN` have all required privileges. For least-privilege, create a custom admin role:
+> ```sql
+> GRANT CREATE USER ON ACCOUNT TO ROLE pat_admin;
+> GRANT CREATE AUTHENTICATION POLICY ON ACCOUNT TO ROLE pat_admin;
+> GRANT CREATE NETWORK POLICY ON ACCOUNT TO ROLE pat_admin;
+> GRANT CREATE SCHEMA ON DATABASE my_db TO ROLE pat_admin;
+> ```
 
 ### What Gets Created
 
@@ -320,7 +360,28 @@ snow sql --user $SA_USER --account $ACCOUNT -q "SELECT 1"
 ## Network Management
 
 > [!NOTE]
-> **📚 Snowflake Docs:** [Network Rules](https://docs.snowflake.com/en/sql-reference/sql/create-network-rule) · [Network Policies](https://docs.snowflake.com/en/sql-reference/sql/create-network-policy)
+> **Snowflake Docs:**
+> - [CREATE NETWORK RULE](https://docs.snowflake.com/en/sql-reference/sql/create-network-rule)
+> - [CREATE NETWORK POLICY](https://docs.snowflake.com/en/sql-reference/sql/create-network-policy)
+> - [ALTER NETWORK POLICY](https://docs.snowflake.com/en/sql-reference/sql/alter-network-policy)
+> - [Network Rule Modes and Types](https://docs.snowflake.com/en/user-guide/network-rules)
+
+### Required Privileges
+
+| Privilege | Used For |
+|-----------|----------|
+| `CREATE SCHEMA` on database | Create NETWORKS schema (if missing) |
+| `CREATE NETWORK RULE` on schema | Create network rules |
+| `CREATE NETWORK POLICY` on account | Create network policies |
+| `ALTER USER` | Assign network policy to user |
+
+> [!TIP]
+> `ACCOUNTADMIN` or `SECURITYADMIN` have all required privileges. Minimum custom role:
+> ```sql
+> GRANT CREATE NETWORK POLICY ON ACCOUNT TO ROLE network_admin;
+> GRANT CREATE SCHEMA ON DATABASE my_db TO ROLE network_admin;
+> GRANT USAGE ON DATABASE my_db TO ROLE network_admin;
+> ```
 
 ### What Gets Created
 
