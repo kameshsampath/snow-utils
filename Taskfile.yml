@@ -96,6 +96,10 @@ tasks:
         task pat:create SA_USER=my_service_user SA_ROLE=demo_role SA_ADMIN_ROLE=sysadmin SNOW_UTILS_DB=my_db
         task pat:create DOT_ENV_FILE=/path/to/project/.env  # update .env in specific location
         task pat:create  # uses env vars from .env
+    deps:
+      - task: snow-utils:check
+        vars:
+          CLI_ARGS: "--quiet"
     cmds:
       - "{{.PAT_CLI}} create {{.CLI_ARGS}}"
     env:
@@ -113,6 +117,10 @@ tasks:
 
   pat:no-rotate:
     desc: Create PAT without rotating existing
+    deps:
+      - task: snow-utils:check
+        vars:
+          CLI_ARGS: "--quiet"
     cmds:
       - "{{.PAT_CLI}} create --no-rotate {{.CLI_ARGS}}"
     env:
@@ -148,6 +156,10 @@ tasks:
         task pat:remove DOT_ENV_FILE=/path/to/.env  # clear specific .env
         task pat:remove -- --pat-only    # only remove PAT
         task pat:remove -- --drop-user   # also drop the user
+    deps:
+      - task: snow-utils:check
+        vars:
+          CLI_ARGS: "--quiet"
     cmds:
       - "{{.PAT_CLI}} remove --yes {{.CLI_ARGS}}"
     env:
@@ -189,6 +201,10 @@ tasks:
         task networks:create NW_RULE_NAME=dev_rule NW_RULE_DB=my_db
         task networks:create NW_RULE_NAME=ci_rule NW_RULE_DB=my_db -- --with-gh
         task networks:create NW_RULE_NAME=api_egress NW_RULE_DB=my_db -- --mode egress --type host_port --values "api.example.com:443"
+    deps:
+      - task: snow-utils:check
+        vars:
+          CLI_ARGS: "--quiet"
     cmds:
       - "{{.NETWORK_CLI}} create {{.CLI_ARGS}}"
     env:
@@ -209,6 +225,10 @@ tasks:
       Example:
         task networks:github NW_RULE_NAME=github_actions NW_RULE_DB=my_db
         task networks:github NW_RULE_NAME=github_actions NW_RULE_DB=my_db -- --policy ci_policy
+    deps:
+      - task: snow-utils:check
+        vars:
+          CLI_ARGS: "--quiet"
     cmds:
       - "{{.NETWORK_CLI}} github {{.CLI_ARGS}}"
     env:
@@ -228,6 +248,10 @@ tasks:
 
       Example:
         task networks:google NW_RULE_NAME=google_ips NW_RULE_DB=my_db
+    deps:
+      - task: snow-utils:check
+        vars:
+          CLI_ARGS: "--quiet"
     cmds:
       - "{{.NETWORK_CLI}} google {{.CLI_ARGS}}"
     env:
@@ -247,6 +271,10 @@ tasks:
 
       Example:
         task networks:local NW_RULE_NAME=dev_local NW_RULE_DB=my_db
+    deps:
+      - task: snow-utils:check
+        vars:
+          CLI_ARGS: "--quiet"
     cmds:
       - "{{.NETWORK_CLI}} local {{.CLI_ARGS}}"
     env:
@@ -646,6 +674,24 @@ tasks:
   # Snow-Utils Setup
   # ===========================================================================
 
+  snow-utils:check:
+    desc: Check if snow-utils infrastructure is ready
+    summary: |
+      Verifies that SA_ROLE and SNOW_UTILS_DB exist.
+      
+      If infrastructure is missing, offers to run setup (requires ACCOUNTADMIN).
+      
+      Environment variables (from .env):
+        SA_ROLE: SA role name to check (default: SA_ROLE)
+        SNOW_UTILS_DB: Database name to check (default: SNOW_UTILS)
+
+      Example:
+        task snow-utils:check                    # Check with defaults
+        task snow-utils:check -- --quiet        # Silent check (exit code only)
+        task snow-utils:check -- --auto-setup   # Auto-run setup if needed
+    cmds:
+      - "{{.PYTHON}} {{.TASKFILE_DIR}}/check_setup.py {{.CLI_ARGS}}"
+
   snow-utils:setup:
     desc: Create SA role and SNOW_UTILS database with required privileges
     summary: |
@@ -699,13 +745,19 @@ tasks:
       - echo "Syncing scripts to {{.SKILLS_REPO}}..."
       - cp extvolume.py "{{.SKILLS_REPO}}/snow-utils-volumes/scripts/"
       - cp snow_common.py "{{.SKILLS_REPO}}/snow-utils-volumes/scripts/"
+      - cp check_setup.py "{{.SKILLS_REPO}}/snow-utils-volumes/scripts/"
+      - cp snow-utils-setup.sql "{{.SKILLS_REPO}}/snow-utils-volumes/scripts/"
       - cp pat.py "{{.SKILLS_REPO}}/snow-utils-pat/scripts/"
       - cp snow_common.py "{{.SKILLS_REPO}}/snow-utils-pat/scripts/"
       - cp network.py "{{.SKILLS_REPO}}/snow-utils-pat/scripts/"
       - cp network_presets.py "{{.SKILLS_REPO}}/snow-utils-pat/scripts/"
+      - cp check_setup.py "{{.SKILLS_REPO}}/snow-utils-pat/scripts/"
+      - cp snow-utils-setup.sql "{{.SKILLS_REPO}}/snow-utils-pat/scripts/"
       - cp network.py "{{.SKILLS_REPO}}/snow-utils-networks/scripts/"
       - cp network_presets.py "{{.SKILLS_REPO}}/snow-utils-networks/scripts/"
       - cp snow_common.py "{{.SKILLS_REPO}}/snow-utils-networks/scripts/"
+      - cp check_setup.py "{{.SKILLS_REPO}}/snow-utils-networks/scripts/"
+      - cp snow-utils-setup.sql "{{.SKILLS_REPO}}/snow-utils-networks/scripts/"
       - echo "✓ Scripts synced"
       - echo ""
       - echo "Next steps:"
