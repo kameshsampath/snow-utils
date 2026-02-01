@@ -89,11 +89,11 @@ tasks:
         SA_USER: Service account username
         SA_ROLE: Role restriction for the PAT (the role the SA will use)
         SA_ADMIN_ROLE: Admin role for creating policies (default: same as SA_ROLE)
-        PAT_OBJECTS_DB: Database for PAT objects
+        SNOW_UTILS_DB: Database for PAT objects
         DOT_ENV_FILE: Path to .env file to update (default: .env in current directory)
 
       Example:
-        task pat:create SA_USER=my_service_user SA_ROLE=demo_role SA_ADMIN_ROLE=sysadmin PAT_OBJECTS_DB=my_db
+        task pat:create SA_USER=my_service_user SA_ROLE=demo_role SA_ADMIN_ROLE=sysadmin SNOW_UTILS_DB=my_db
         task pat:create DOT_ENV_FILE=/path/to/project/.env  # update .env in specific location
         task pat:create  # uses env vars from .env
     cmds:
@@ -102,13 +102,13 @@ tasks:
       SA_USER: "{{.SA_USER}}"
       SA_ROLE: "{{.SA_ROLE}}"
       SA_ADMIN_ROLE: "{{.SA_ADMIN_ROLE}}"
-      PAT_OBJECTS_DB: "{{.PAT_OBJECTS_DB}}"
+      SNOW_UTILS_DB: "{{.SNOW_UTILS_DB}}"
       DOT_ENV_FILE: "{{.DOT_ENV_FILE}}"
     vars:
       SA_USER: '{{.SA_USER | default ""}}'
       SA_ROLE: '{{.SA_ROLE | default ""}}'
       SA_ADMIN_ROLE: '{{.SA_ADMIN_ROLE | default ""}}'
-      PAT_OBJECTS_DB: '{{.PAT_OBJECTS_DB | default ""}}'
+      SNOW_UTILS_DB: '{{.SNOW_UTILS_DB | default ""}}'
       DOT_ENV_FILE: '{{.DOT_ENV_FILE | default ""}}'
 
   pat:no-rotate:
@@ -119,13 +119,13 @@ tasks:
       SA_USER: "{{.SA_USER}}"
       SA_ROLE: "{{.SA_ROLE}}"
       SA_ADMIN_ROLE: "{{.SA_ADMIN_ROLE}}"
-      PAT_OBJECTS_DB: "{{.PAT_OBJECTS_DB}}"
+      SNOW_UTILS_DB: "{{.SNOW_UTILS_DB}}"
       DOT_ENV_FILE: "{{.DOT_ENV_FILE}}"
     vars:
       SA_USER: '{{.SA_USER | default ""}}'
       SA_ROLE: '{{.SA_ROLE | default ""}}'
       SA_ADMIN_ROLE: '{{.SA_ADMIN_ROLE | default ""}}'
-      PAT_OBJECTS_DB: '{{.PAT_OBJECTS_DB | default ""}}'
+      SNOW_UTILS_DB: '{{.SNOW_UTILS_DB | default ""}}'
       DOT_ENV_FILE: '{{.DOT_ENV_FILE | default ""}}'
 
   pat:remove:
@@ -136,7 +136,7 @@ tasks:
 
       Environment variables (can be set in .env):
         SA_USER: Service account username
-        PAT_OBJECTS_DB: Database where PAT objects are stored
+        SNOW_UTILS_DB: Database where PAT objects are stored
         DOT_ENV_FILE: Path to .env file to clear credentials from
 
       Options:
@@ -144,7 +144,7 @@ tasks:
         --drop-user: Also drop the service user
 
       Example:
-        task pat:remove SA_USER=my_service_user PAT_OBJECTS_DB=my_db
+        task pat:remove SA_USER=my_service_user SNOW_UTILS_DB=my_db
         task pat:remove DOT_ENV_FILE=/path/to/.env  # clear specific .env
         task pat:remove -- --pat-only    # only remove PAT
         task pat:remove -- --drop-user   # also drop the user
@@ -152,11 +152,11 @@ tasks:
       - "{{.PAT_CLI}} remove --yes {{.CLI_ARGS}}"
     env:
       SA_USER: "{{.SA_USER}}"
-      PAT_OBJECTS_DB: "{{.PAT_OBJECTS_DB}}"
+      SNOW_UTILS_DB: "{{.SNOW_UTILS_DB}}"
       DOT_ENV_FILE: "{{.DOT_ENV_FILE}}"
     vars:
       SA_USER: '{{.SA_USER | default ""}}'
-      PAT_OBJECTS_DB: '{{.PAT_OBJECTS_DB | default ""}}'
+      SNOW_UTILS_DB: '{{.SNOW_UTILS_DB | default ""}}'
       DOT_ENV_FILE: '{{.DOT_ENV_FILE | default ""}}'
 
   # ===========================================================================
@@ -643,6 +643,48 @@ tasks:
       - "{{.NETWORK_CLI}} --help"
 
   # ===========================================================================
+  # Snow-Utils Setup
+  # ===========================================================================
+
+  snow-utils:setup:
+    desc: Create SA role and SNOW_UTILS database with required privileges
+    summary: |
+      Creates the SA role and SNOW_UTILS database for snow-utils operations.
+
+      This script must be run by ACCOUNTADMIN or equivalent. The created role
+      has scoped-down privileges with NO grant delegation for security.
+
+      Environment variables (from .env, can be overridden):
+        SA_ROLE: Name of the SA role to create
+        SNOW_UTILS_DB: Name of the database to create
+
+      Created resources:
+        - Role: {SA_ROLE} with minimal required privileges
+        - Database: {SNOW_UTILS_DB}
+        - Schemas: {SNOW_UTILS_DB}.NETWORKS, {SNOW_UTILS_DB}.POLICIES
+
+      Example:
+        task snow-utils:setup                                            # Uses .env values
+        task snow-utils:setup SA_ROLE=MY_SA_ROLE                        # Override role
+        task snow-utils:setup SA_ROLE=MY_SA SNOW_UTILS_DB=MY_UTILS    # Override both
+    cmds:
+      - echo "Creating SA role ${SA_ROLE} and ${SNOW_UTILS_DB} database..."
+      - snow sql -f "{{.TASKFILE_DIR}}/snow-utils-setup.sql" --templating=all
+      - echo ""
+      - echo "✓ Setup complete!"
+      - echo ""
+      - echo "Next steps:"
+      - echo "  1. Grant the role to users:"
+      - echo "     snow sql -q \"GRANT ROLE ${SA_ROLE} TO USER your_username\""
+      - echo ""
+      - echo "  2. Set environment variables:"
+      - echo "     export SNOWFLAKE_ROLE=${SA_ROLE}"
+      - echo "     export SNOW_UTILS_DB=${SNOW_UTILS_DB}"
+      - echo ""
+      - echo "  3. Run snow-utils tasks:"
+      - echo "     task pat:create SA_USER=my_sa SA_ROLE=app_role"
+
+  # ===========================================================================
   # Skills Sync Tasks
   # ===========================================================================
 
@@ -670,7 +712,7 @@ tasks:
       - echo "  cd {{.SKILLS_REPO}}"
       - echo "  git diff && git add -A && git commit -m 'Sync scripts' && git push"
       - echo ""
-      - echo "To reload skills: task skills:reload"
+      - 'echo "To reload skills: task skills:reload"'
 
   skills:reload:
     desc: Sync scripts and reload Cortex Code skills

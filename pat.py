@@ -324,7 +324,7 @@ def cli(ctx: click.Context, verbose: bool, debug: bool) -> None:
 @cli.command(name="create")
 @click.option("--user", "-u", envvar="SA_USER", required=True, help="Service account user name")
 @click.option("--role", "-r", envvar="SA_ROLE", required=True, help="Role restriction for the PAT")
-@click.option("--db", "-d", envvar="PAT_OBJECTS_DB", required=True, help="Database for PAT objects")
+@click.option("--db", "-d", envvar="SNOW_UTILS_DB", required=True, help="Database for PAT objects")
 @click.option("--pat-name", default=None, envvar="PAT_NAME", help="Name for the PAT token")
 @click.option("--rotate/--no-rotate", default=True, help="Rotate existing PAT (default: True)")
 @click.option(
@@ -510,7 +510,7 @@ def create_command(
 
 @cli.command(name="remove")
 @click.option("--user", "-u", envvar="SA_USER", required=True, help="Service account user name")
-@click.option("--db", "-d", envvar="PAT_OBJECTS_DB", required=True, help="Database for PAT objects")
+@click.option("--db", "-d", envvar="SNOW_UTILS_DB", required=True, help="Database for PAT objects")
 @click.option("--pat-name", default=None, envvar="PAT_NAME", help="Name of the PAT to remove")
 @click.option("--drop-user", is_flag=True, help="Also drop the service user")
 @click.option("--pat-only", is_flag=True, help="Only remove PAT, keep policies")

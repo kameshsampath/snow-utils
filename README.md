@@ -30,7 +30,7 @@ Snow Utils turns complex multi-step Snowflake infrastructure setup into single c
 snow-utils extvolume:up
 
 # 🔑 Create PAT for a service account
-snow-utils pat:create SA_USER=my_sa SA_ROLE=my_role PAT_OBJECTS_DB=my_db
+snow-utils pat:create SA_USER=my_sa SA_ROLE=my_role SNOW_UTILS_DB=my_db
 
 # 🌐 Create network rule for GitHub Actions
 snow-utils networks:github NW_RULE_NAME=gh_actions NW_RULE_DB=my_db
@@ -144,7 +144,7 @@ BUCKET=iceberg-demo
 SA_USER=my_service_user
 SA_ROLE=demo_role
 SA_ADMIN_ROLE=sysadmin
-PAT_OBJECTS_DB=my_db
+SNOW_UTILS_DB=my_db
 ```
 
 ### 4. Verify Installation
@@ -320,10 +320,10 @@ When you run `pat`, the following resources are provisioned:
 
 ```bash
 # Create PAT with separate admin role
-snow-utils pat:create SA_USER=my_sa SA_ROLE=demo_role SA_ADMIN_ROLE=sysadmin PAT_OBJECTS_DB=my_db
+snow-utils pat:create SA_USER=my_sa SA_ROLE=demo_role SA_ADMIN_ROLE=sysadmin SNOW_UTILS_DB=my_db
 
 # Create PAT (admin-role defaults to SA_ROLE)
-snow-utils pat:create SA_USER=my_sa SA_ROLE=my_role PAT_OBJECTS_DB=my_db
+snow-utils pat:create SA_USER=my_sa SA_ROLE=my_role SNOW_UTILS_DB=my_db
 
 # Create using env vars from .env file
 snow-utils pat:create
@@ -332,7 +332,7 @@ snow-utils pat:create
 snow-utils pat:no-rotate
 
 # Remove PAT and policies (keeps user)
-snow-utils pat:remove SA_USER=my_sa PAT_OBJECTS_DB=my_db
+snow-utils pat:remove SA_USER=my_sa SNOW_UTILS_DB=my_db
 
 # Remove only the PAT (keep network/auth policies)
 snow-utils pat:remove -- --pat-only
@@ -584,7 +584,7 @@ All variables can be set in `.env` or exported in your shell.
 | `SA_USER` | Service account username | - |
 | `SA_ROLE` | Role restriction for PAT | - |
 | `SA_ADMIN_ROLE` | Admin role for creating policies | `SA_ROLE` |
-| `PAT_OBJECTS_DB` | Database for PAT objects | - |
+| `SNOW_UTILS_DB` | Database for PAT objects | - |
 | `DOT_ENV_FILE` | Path to .env file for credentials | `.env` |
 
 ---
