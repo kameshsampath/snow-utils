@@ -1,3 +1,18 @@
+# Copyright 2026 Kamesh Sampath
+# Generated with Cortex Code
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 #! /usr/bin/env task
 # https://taskfile.dev
 version: "3"
@@ -13,6 +28,7 @@ vars:
   # CLI scripts
   PAT_CLI: "{{.PYTHON}} {{.TASKFILE_DIR}}/pat.py"
   EXTVOLUME_CLI: "{{.PYTHON}} {{.TASKFILE_DIR}}/extvolume.py"
+  NETWORK_CLI: "{{.PYTHON}} {{.TASKFILE_DIR}}/network.py"
   # Default bucket name for demos
   BUCKET: iceberg-demo
   # AWS region
@@ -73,43 +89,51 @@ tasks:
         SA_USER: Service account username
         SA_ROLE: Role restriction for the PAT (the role the SA will use)
         SA_ADMIN_ROLE: Admin role for creating policies (default: same as SA_ROLE)
-        PAT_OBJECTS_DB: Database for PAT objects
+        SNOW_UTILS_DB: Database for PAT objects
         DOT_ENV_FILE: Path to .env file to update (default: .env in current directory)
 
       Example:
-        task pat:create SA_USER=my_service_user SA_ROLE=demo_role SA_ADMIN_ROLE=sysadmin PAT_OBJECTS_DB=my_db
+        task pat:create SA_USER=my_service_user SA_ROLE=demo_role SA_ADMIN_ROLE=sysadmin SNOW_UTILS_DB=my_db
         task pat:create DOT_ENV_FILE=/path/to/project/.env  # update .env in specific location
         task pat:create  # uses env vars from .env
+    deps:
+      - task: snow-utils:check
+        vars:
+          CLI_ARGS: "--quiet"
     cmds:
       - "{{.PAT_CLI}} create {{.CLI_ARGS}}"
     env:
       SA_USER: "{{.SA_USER}}"
       SA_ROLE: "{{.SA_ROLE}}"
       SA_ADMIN_ROLE: "{{.SA_ADMIN_ROLE}}"
-      PAT_OBJECTS_DB: "{{.PAT_OBJECTS_DB}}"
+      SNOW_UTILS_DB: "{{.SNOW_UTILS_DB}}"
       DOT_ENV_FILE: "{{.DOT_ENV_FILE}}"
     vars:
       SA_USER: '{{.SA_USER | default ""}}'
       SA_ROLE: '{{.SA_ROLE | default ""}}'
       SA_ADMIN_ROLE: '{{.SA_ADMIN_ROLE | default ""}}'
-      PAT_OBJECTS_DB: '{{.PAT_OBJECTS_DB | default ""}}'
+      SNOW_UTILS_DB: '{{.SNOW_UTILS_DB | default ""}}'
       DOT_ENV_FILE: '{{.DOT_ENV_FILE | default ""}}'
 
   pat:no-rotate:
     desc: Create PAT without rotating existing
+    deps:
+      - task: snow-utils:check
+        vars:
+          CLI_ARGS: "--quiet"
     cmds:
       - "{{.PAT_CLI}} create --no-rotate {{.CLI_ARGS}}"
     env:
       SA_USER: "{{.SA_USER}}"
       SA_ROLE: "{{.SA_ROLE}}"
       SA_ADMIN_ROLE: "{{.SA_ADMIN_ROLE}}"
-      PAT_OBJECTS_DB: "{{.PAT_OBJECTS_DB}}"
+      SNOW_UTILS_DB: "{{.SNOW_UTILS_DB}}"
       DOT_ENV_FILE: "{{.DOT_ENV_FILE}}"
     vars:
       SA_USER: '{{.SA_USER | default ""}}'
       SA_ROLE: '{{.SA_ROLE | default ""}}'
       SA_ADMIN_ROLE: '{{.SA_ADMIN_ROLE | default ""}}'
-      PAT_OBJECTS_DB: '{{.PAT_OBJECTS_DB | default ""}}'
+      SNOW_UTILS_DB: '{{.SNOW_UTILS_DB | default ""}}'
       DOT_ENV_FILE: '{{.DOT_ENV_FILE | default ""}}'
 
   pat:remove:
@@ -120,7 +144,7 @@ tasks:
 
       Environment variables (can be set in .env):
         SA_USER: Service account username
-        PAT_OBJECTS_DB: Database where PAT objects are stored
+        SNOW_UTILS_DB: Database where PAT objects are stored
         DOT_ENV_FILE: Path to .env file to clear credentials from
 
       Options:
@@ -128,20 +152,202 @@ tasks:
         --drop-user: Also drop the service user
 
       Example:
-        task pat:remove SA_USER=my_service_user PAT_OBJECTS_DB=my_db
+        task pat:remove SA_USER=my_service_user SNOW_UTILS_DB=my_db
         task pat:remove DOT_ENV_FILE=/path/to/.env  # clear specific .env
         task pat:remove -- --pat-only    # only remove PAT
         task pat:remove -- --drop-user   # also drop the user
+    deps:
+      - task: snow-utils:check
+        vars:
+          CLI_ARGS: "--quiet"
     cmds:
       - "{{.PAT_CLI}} remove --yes {{.CLI_ARGS}}"
     env:
       SA_USER: "{{.SA_USER}}"
-      PAT_OBJECTS_DB: "{{.PAT_OBJECTS_DB}}"
+      SNOW_UTILS_DB: "{{.SNOW_UTILS_DB}}"
       DOT_ENV_FILE: "{{.DOT_ENV_FILE}}"
     vars:
       SA_USER: '{{.SA_USER | default ""}}'
-      PAT_OBJECTS_DB: '{{.PAT_OBJECTS_DB | default ""}}'
+      SNOW_UTILS_DB: '{{.SNOW_UTILS_DB | default ""}}'
       DOT_ENV_FILE: '{{.DOT_ENV_FILE | default ""}}'
+
+  # ===========================================================================
+  # Network Rule & Policy Tasks
+  # ===========================================================================
+
+  networks:create:
+    desc: Create a network rule with optional policy
+    summary: |
+      Creates a Snowflake network rule with optional network policy.
+
+      Supports IPv4 presets (GitHub Actions, Google, local IP) and custom values.
+
+      Environment variables (can be set in .env):
+        NW_RULE_NAME: Network rule name
+        NW_RULE_DB: Database for network rule
+        NW_RULE_SCHEMA: Schema for network rule (default: NETWORKS)
+
+      Options:
+        --mode: Rule mode (ingress, egress, internal_stage, postgres_ingress, postgres_egress)
+        --type: Value type (ipv4, host_port, private_host_port, awsvpceid)
+        --with-local: Include local public IP (default for ipv4)
+        --with-gh: Include GitHub Actions IPs
+        --with-google: Include Google IPs
+        --values: Custom comma-separated values
+        --policy: Also create/update a network policy
+        --policy-mode: create (default) or alter existing policy
+
+      Example:
+        task networks:create NW_RULE_NAME=dev_rule NW_RULE_DB=my_db
+        task networks:create NW_RULE_NAME=ci_rule NW_RULE_DB=my_db -- --with-gh
+        task networks:create NW_RULE_NAME=api_egress NW_RULE_DB=my_db -- --mode egress --type host_port --values "api.example.com:443"
+    deps:
+      - task: snow-utils:check
+        vars:
+          CLI_ARGS: "--quiet"
+    cmds:
+      - "{{.NETWORK_CLI}} create {{.CLI_ARGS}}"
+    env:
+      NW_RULE_NAME: "{{.NW_RULE_NAME}}"
+      NW_RULE_DB: "{{.NW_RULE_DB}}"
+      NW_RULE_SCHEMA: "{{.NW_RULE_SCHEMA}}"
+    vars:
+      NW_RULE_NAME: '{{.NW_RULE_NAME | default ""}}'
+      NW_RULE_DB: '{{.NW_RULE_DB | default ""}}'
+      NW_RULE_SCHEMA: '{{.NW_RULE_SCHEMA | default "NETWORKS"}}'
+
+  networks:github:
+    desc: Create network rule for GitHub Actions IPs
+    summary: |
+      Creates an INGRESS IPV4 network rule containing GitHub Actions runner IPs.
+      Useful for CI/CD pipelines that need to access Snowflake.
+
+      Example:
+        task networks:github NW_RULE_NAME=github_actions NW_RULE_DB=my_db
+        task networks:github NW_RULE_NAME=github_actions NW_RULE_DB=my_db -- --policy ci_policy
+    deps:
+      - task: snow-utils:check
+        vars:
+          CLI_ARGS: "--quiet"
+    cmds:
+      - "{{.NETWORK_CLI}} github {{.CLI_ARGS}}"
+    env:
+      NW_RULE_NAME: "{{.NW_RULE_NAME}}"
+      NW_RULE_DB: "{{.NW_RULE_DB}}"
+      NW_RULE_SCHEMA: "{{.NW_RULE_SCHEMA}}"
+    vars:
+      NW_RULE_NAME: '{{.NW_RULE_NAME | default ""}}'
+      NW_RULE_DB: '{{.NW_RULE_DB | default ""}}'
+      NW_RULE_SCHEMA: '{{.NW_RULE_SCHEMA | default "NETWORKS"}}'
+
+  networks:google:
+    desc: Create network rule for Google IPs
+    summary: |
+      Creates an INGRESS IPV4 network rule containing Google IP ranges.
+      Useful for Google Apps Script, Cloud Functions, etc.
+
+      Example:
+        task networks:google NW_RULE_NAME=google_ips NW_RULE_DB=my_db
+    deps:
+      - task: snow-utils:check
+        vars:
+          CLI_ARGS: "--quiet"
+    cmds:
+      - "{{.NETWORK_CLI}} google {{.CLI_ARGS}}"
+    env:
+      NW_RULE_NAME: "{{.NW_RULE_NAME}}"
+      NW_RULE_DB: "{{.NW_RULE_DB}}"
+      NW_RULE_SCHEMA: "{{.NW_RULE_SCHEMA}}"
+    vars:
+      NW_RULE_NAME: '{{.NW_RULE_NAME | default ""}}'
+      NW_RULE_DB: '{{.NW_RULE_DB | default ""}}'
+      NW_RULE_SCHEMA: '{{.NW_RULE_SCHEMA | default "NETWORKS"}}'
+
+  networks:local:
+    desc: Create network rule for current IP only
+    summary: |
+      Creates an INGRESS IPV4 network rule containing only your current public IP.
+      Most restrictive option - useful for development.
+
+      Example:
+        task networks:local NW_RULE_NAME=dev_local NW_RULE_DB=my_db
+    deps:
+      - task: snow-utils:check
+        vars:
+          CLI_ARGS: "--quiet"
+    cmds:
+      - "{{.NETWORK_CLI}} local {{.CLI_ARGS}}"
+    env:
+      NW_RULE_NAME: "{{.NW_RULE_NAME}}"
+      NW_RULE_DB: "{{.NW_RULE_DB}}"
+      NW_RULE_SCHEMA: "{{.NW_RULE_SCHEMA}}"
+    vars:
+      NW_RULE_NAME: '{{.NW_RULE_NAME | default ""}}'
+      NW_RULE_DB: '{{.NW_RULE_DB | default ""}}'
+      NW_RULE_SCHEMA: '{{.NW_RULE_SCHEMA | default "NETWORKS"}}'
+
+  networks:policy:
+    desc: Create or alter a network policy
+    summary: |
+      Creates a new network policy or adds rules to an existing one.
+
+      Example:
+        task networks:policy -- --name my_policy --rules "DB.NETWORKS.RULE1,DB.NETWORKS.RULE2"
+        task networks:policy -- --name my_policy --rules "DB.NETWORKS.RULE3" --alter
+    cmds:
+      - "{{.NETWORK_CLI}} policy {{.CLI_ARGS}}"
+
+  networks:list-rules:
+    desc: List network rules in a schema
+    summary: |
+      Lists all network rules in the specified database/schema.
+
+      Example:
+        task networks:list-rules NW_RULE_DB=my_db
+        task networks:list-rules NW_RULE_DB=my_db NW_RULE_SCHEMA=NETWORKS
+    cmds:
+      - "{{.NETWORK_CLI}} list-rules {{.CLI_ARGS}}"
+    env:
+      NW_RULE_DB: "{{.NW_RULE_DB}}"
+      NW_RULE_SCHEMA: "{{.NW_RULE_SCHEMA}}"
+    vars:
+      NW_RULE_DB: '{{.NW_RULE_DB | default ""}}'
+      NW_RULE_SCHEMA: '{{.NW_RULE_SCHEMA | default "NETWORKS"}}'
+
+  networks:list-policies:
+    desc: List all network policies
+    cmds:
+      - "{{.NETWORK_CLI}} list-policies"
+
+  networks:delete-rule:
+    desc: Delete a network rule
+    summary: |
+      Deletes a network rule from Snowflake.
+
+      Example:
+        task networks:delete-rule NW_RULE_NAME=old_rule NW_RULE_DB=my_db
+    cmds:
+      - "{{.NETWORK_CLI}} delete-rule --yes {{.CLI_ARGS}}"
+    env:
+      NW_RULE_NAME: "{{.NW_RULE_NAME}}"
+      NW_RULE_DB: "{{.NW_RULE_DB}}"
+      NW_RULE_SCHEMA: "{{.NW_RULE_SCHEMA}}"
+    vars:
+      NW_RULE_NAME: '{{.NW_RULE_NAME | default ""}}'
+      NW_RULE_DB: '{{.NW_RULE_DB | default ""}}'
+      NW_RULE_SCHEMA: '{{.NW_RULE_SCHEMA | default "NETWORKS"}}'
+
+  networks:delete-policy:
+    desc: Delete a network policy
+    summary: |
+      Deletes a network policy from Snowflake.
+      Optionally unsets from a user first.
+
+      Example:
+        task networks:delete-policy -- --name my_policy
+        task networks:delete-policy -- --name my_policy --user my_user
+    cmds:
+      - "{{.NETWORK_CLI}} delete-policy --yes {{.CLI_ARGS}}"
 
   # ===========================================================================
   # External Volume Tasks
@@ -458,3 +664,126 @@ tasks:
     desc: Show pat CLI options
     cmds:
       - "{{.PAT_CLI}} --help"
+
+  help:networks:
+    desc: Show network CLI options
+    cmds:
+      - "{{.NETWORK_CLI}} --help"
+
+  # ===========================================================================
+  # Snow-Utils Setup
+  # ===========================================================================
+
+  snow-utils:check:
+    desc: Check if snow-utils infrastructure is ready
+    summary: |
+      Verifies that SA_ROLE and SNOW_UTILS_DB exist.
+      
+      If infrastructure is missing, offers to run setup (requires ACCOUNTADMIN).
+      
+      Environment variables (from .env):
+        SA_ROLE: SA role name to check (default: SA_ROLE)
+        SNOW_UTILS_DB: Database name to check (default: SNOW_UTILS)
+
+      Example:
+        task snow-utils:check                    # Check with defaults
+        task snow-utils:check -- --quiet        # Silent check (exit code only)
+        task snow-utils:check -- --auto-setup   # Auto-run setup if needed
+    cmds:
+      - "{{.PYTHON}} {{.TASKFILE_DIR}}/check_setup.py {{.CLI_ARGS}}"
+
+  snow-utils:setup:
+    desc: Create SA role and SNOW_UTILS database with required privileges
+    summary: |
+      Creates the SA role and SNOW_UTILS database for snow-utils operations.
+
+      This script must be run by ACCOUNTADMIN or equivalent. The created role
+      has scoped-down privileges with NO grant delegation for security.
+
+      Environment variables (from .env, can be overridden):
+        SA_ROLE: Name of the SA role to create
+        SNOW_UTILS_DB: Name of the database to create
+
+      Created resources:
+        - Role: {SA_ROLE} with minimal required privileges
+        - Database: {SNOW_UTILS_DB}
+        - Schemas: {SNOW_UTILS_DB}.NETWORKS, {SNOW_UTILS_DB}.POLICIES
+
+      Example:
+        task snow-utils:setup                                            # Uses .env values
+        task snow-utils:setup SA_ROLE=MY_SA_ROLE                        # Override role
+        task snow-utils:setup SA_ROLE=MY_SA SNOW_UTILS_DB=MY_UTILS    # Override both
+    cmds:
+      - echo "Creating SA role ${SA_ROLE} and ${SNOW_UTILS_DB} database..."
+      - snow sql -f "{{.TASKFILE_DIR}}/snow-utils-setup.sql" --templating=all
+      - echo ""
+      - echo "✓ Setup complete!"
+      - echo ""
+      - echo "Next steps:"
+      - echo "  1. Grant the role to users:"
+      - echo "     snow sql -q \"GRANT ROLE ${SA_ROLE} TO USER your_username\""
+      - echo ""
+      - echo "  2. Set environment variables:"
+      - echo "     export SNOWFLAKE_ROLE=${SA_ROLE}"
+      - echo "     export SNOW_UTILS_DB=${SNOW_UTILS_DB}"
+      - echo ""
+      - echo "  3. Run snow-utils tasks:"
+      - echo "     task pat:create SA_USER=my_sa SA_ROLE=app_role"
+
+  # ===========================================================================
+  # Skills Sync Tasks
+  # ===========================================================================
+
+  skills:sync:
+    desc: Sync CLI scripts to snow-utils-skills repo
+    vars:
+      SKILLS_REPO: '{{.SKILLS_REPO | default (printf "%s/git/kameshsampath/snow-utils-skills" .HOME)}}'
+    preconditions:
+      - sh: test -d "{{.SKILLS_REPO}}"
+        msg: "Skills repo not found at {{.SKILLS_REPO}}. Set SKILLS_REPO env var."
+    cmds:
+      - echo "Syncing scripts to {{.SKILLS_REPO}}..."
+      - cp extvolume.py "{{.SKILLS_REPO}}/snow-utils-volumes/scripts/"
+      - cp snow_common.py "{{.SKILLS_REPO}}/snow-utils-volumes/scripts/"
+      - cp check_setup.py "{{.SKILLS_REPO}}/snow-utils-volumes/scripts/"
+      - cp snow-utils-setup.sql "{{.SKILLS_REPO}}/snow-utils-volumes/scripts/"
+      - cp pat.py "{{.SKILLS_REPO}}/snow-utils-pat/scripts/"
+      - cp snow_common.py "{{.SKILLS_REPO}}/snow-utils-pat/scripts/"
+      - cp network.py "{{.SKILLS_REPO}}/snow-utils-pat/scripts/"
+      - cp network_presets.py "{{.SKILLS_REPO}}/snow-utils-pat/scripts/"
+      - cp check_setup.py "{{.SKILLS_REPO}}/snow-utils-pat/scripts/"
+      - cp snow-utils-setup.sql "{{.SKILLS_REPO}}/snow-utils-pat/scripts/"
+      - cp network.py "{{.SKILLS_REPO}}/snow-utils-networks/scripts/"
+      - cp network_presets.py "{{.SKILLS_REPO}}/snow-utils-networks/scripts/"
+      - cp snow_common.py "{{.SKILLS_REPO}}/snow-utils-networks/scripts/"
+      - cp check_setup.py "{{.SKILLS_REPO}}/snow-utils-networks/scripts/"
+      - cp snow-utils-setup.sql "{{.SKILLS_REPO}}/snow-utils-networks/scripts/"
+      - echo "✓ Scripts synced"
+      - echo ""
+      - echo "Next steps:"
+      - echo "  cd {{.SKILLS_REPO}}"
+      - echo "  git diff && git add -A && git commit -m 'Sync scripts' && git push"
+      - echo ""
+      - 'echo "To reload skills: task skills:reload"'
+
+  skills:reload:
+    desc: Sync scripts and reload Cortex Code skills
+    vars:
+      SKILLS_REPO: '{{.SKILLS_REPO | default (printf "%s/git/kameshsampath/snow-utils-skills" .HOME)}}'
+      CORTEX_CONFIG: '{{.CORTEX_CONFIG | default (printf "%s/.config/.snowflake/cortex" .HOME)}}'
+    deps:
+      - skills:sync
+    cmds:
+      - echo "Clearing CoCo cache..."
+      - rm -rf "{{.CORTEX_CONFIG}}/cache" 2>/dev/null || true
+      - echo "✓ Cache cleared"
+      - echo "Reloading skills..."
+      - cortex skill remove "{{.SKILLS_REPO}}/snow-utils-volumes" 2>/dev/null || true
+      - cortex skill remove "{{.SKILLS_REPO}}/snow-utils-pat" 2>/dev/null || true
+      - cortex skill remove "{{.SKILLS_REPO}}/snow-utils-networks" 2>/dev/null || true
+      - cortex skill add "{{.SKILLS_REPO}}/snow-utils-volumes"
+      - cortex skill add "{{.SKILLS_REPO}}/snow-utils-pat"
+      - cortex skill add "{{.SKILLS_REPO}}/snow-utils-networks"
+      - echo "✓ Skills reloaded"
+      - echo ""
+      - echo "⚠ Restart CoCo or start a new chat session for changes to take effect"

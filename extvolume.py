@@ -1,4 +1,18 @@
 #!/usr/bin/env python3
+# Copyright 2026 Kamesh Sampath
+# Generated with Cortex Code
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 """
 Snowflake External Volume Manager
 
@@ -483,10 +497,13 @@ def delete_iam_role(iam_client: Any, role_name: str, policy_arn: str) -> None:
 # =============================================================================
 
 
-def get_external_volume_sql(config: ExternalVolumeConfig, role_arn: str) -> str:
+def get_external_volume_sql(
+    config: ExternalVolumeConfig, role_arn: str, force: bool = False
+) -> str:
     """Generate SQL for creating external volume."""
     allow_writes = "TRUE" if config.allow_writes else "FALSE"
-    return f"""CREATE OR REPLACE EXTERNAL VOLUME {config.volume_name}
+    create_stmt = "CREATE OR REPLACE" if force else "CREATE IF NOT EXISTS"
+    return f"""{create_stmt} EXTERNAL VOLUME {config.volume_name}
     STORAGE_LOCATIONS = (
         (
             NAME = '{config.storage_location_name}'
@@ -499,10 +516,12 @@ def get_external_volume_sql(config: ExternalVolumeConfig, role_arn: str) -> str:
     ALLOW_WRITES = {allow_writes};"""
 
 
-def create_external_volume(config: ExternalVolumeConfig, role_arn: str) -> None:
+def create_external_volume(
+    config: ExternalVolumeConfig, role_arn: str, force: bool = False
+) -> None:
     """Create Snowflake external volume."""
     click.echo(f"Creating Snowflake external volume: {config.volume_name}")
-    sql = get_external_volume_sql(config, role_arn)
+    sql = get_external_volume_sql(config, role_arn, force)
     run_snow_sql_stdin(sql)
     click.echo(f"✓ Created external volume: {config.volume_name}")
 
@@ -734,6 +753,11 @@ def cli(
     help="Preview what would be created without making changes",
 )
 @click.option(
+    "--force", "-f",
+    is_flag=True,
+    help="Overwrite existing external volume (CREATE OR REPLACE)",
+)
+@click.option(
     "--output",
     "-o",
     type=click.Choice(["text", "json"]),
@@ -752,6 +776,7 @@ def create(
     no_writes: bool,
     skip_verify: bool,
     dry_run: bool,
+    force: bool,
     output: str,
 ) -> None:
     """
@@ -923,7 +948,7 @@ def create(
         click.echo("Step 4: Create Snowflake External Volume")
         click.echo("─" * 60)
         click.echo()
-        click.echo(get_external_volume_sql(config, role_arn))
+        click.echo(get_external_volume_sql(config, role_arn, force))
         click.echo()
 
         click.echo("─" * 60)
@@ -1012,7 +1037,7 @@ def create(
         click.echo("─" * 40)
         click.echo("Step 4: Create Snowflake External Volume")
         click.echo("─" * 40)
-        create_external_volume(config, role_arn)
+        create_external_volume(config, role_arn, force)
         click.echo()
 
         # Step 5: Get Snowflake IAM user ARN

@@ -1,0 +1,18 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+type: software
+title: "snow-bin-utils"
+abstract: "CLI utilities for Snowflake: PAT management, network rules/policies, and external volumes."
+authors:
+  - family-names: "Sampath"
+    given-names: "Kamesh"
+license: Apache-2.0
+repository-code: "https://github.com/kameshsampath/snow-bin-utils"
+date-released: 2026-01-31
+keywords:
+  - snowflake
+  - cli
+  - pat
+  - network-rules
+  - external-volumes
+  - iceberg
