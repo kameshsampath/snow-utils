@@ -743,47 +743,14 @@ tasks:
         msg: "Skills repo not found at {{.SKILLS_REPO}}. Set SKILLS_REPO env var."
     cmds:
       - echo "Syncing scripts to {{.SKILLS_REPO}}..."
-      - cp extvolume.py "{{.SKILLS_REPO}}/snow-utils-volumes/scripts/"
-      - cp snow_common.py "{{.SKILLS_REPO}}/snow-utils-volumes/scripts/"
-      - cp check_setup.py "{{.SKILLS_REPO}}/snow-utils-volumes/scripts/"
-      - cp snow-utils-setup.sql "{{.SKILLS_REPO}}/snow-utils-volumes/scripts/"
-      - cp pat.py "{{.SKILLS_REPO}}/snow-utils-pat/scripts/"
-      - cp snow_common.py "{{.SKILLS_REPO}}/snow-utils-pat/scripts/"
-      - cp network.py "{{.SKILLS_REPO}}/snow-utils-pat/scripts/"
-      - cp network_presets.py "{{.SKILLS_REPO}}/snow-utils-pat/scripts/"
-      - cp check_setup.py "{{.SKILLS_REPO}}/snow-utils-pat/scripts/"
-      - cp snow-utils-setup.sql "{{.SKILLS_REPO}}/snow-utils-pat/scripts/"
-      - cp network.py "{{.SKILLS_REPO}}/snow-utils-networks/scripts/"
-      - cp network_presets.py "{{.SKILLS_REPO}}/snow-utils-networks/scripts/"
-      - cp snow_common.py "{{.SKILLS_REPO}}/snow-utils-networks/scripts/"
-      - cp check_setup.py "{{.SKILLS_REPO}}/snow-utils-networks/scripts/"
-      - cp snow-utils-setup.sql "{{.SKILLS_REPO}}/snow-utils-networks/scripts/"
-      - echo "✓ Scripts synced"
       - echo ""
-      - echo "Next steps:"
-      - echo "  cd {{.SKILLS_REPO}}"
-      - echo "  git diff && git add -A && git commit -m 'Sync scripts' && git push"
+      - echo "→ snow-utils-volumes/scripts/"
+      - rsync -avh --itemize-changes --include='*.py' --include='*.sql' --exclude='*' . "{{.SKILLS_REPO}}/snow-utils-volumes/scripts/"
       - echo ""
-      - 'echo "To reload skills: task skills:reload"'
-
-  skills:reload:
-    desc: Sync scripts and reload Cortex Code skills
-    vars:
-      SKILLS_REPO: '{{.SKILLS_REPO | default (printf "%s/git/kameshsampath/snow-utils-skills" .HOME)}}'
-      CORTEX_CONFIG: '{{.CORTEX_CONFIG | default (printf "%s/.config/.snowflake/cortex" .HOME)}}'
-    deps:
-      - skills:sync
-    cmds:
-      - echo "Clearing CoCo cache..."
-      - rm -rf "{{.CORTEX_CONFIG}}/cache" 2>/dev/null || true
-      - echo "✓ Cache cleared"
-      - echo "Reloading skills..."
-      - cortex skill remove "{{.SKILLS_REPO}}/snow-utils-volumes" 2>/dev/null || true
-      - cortex skill remove "{{.SKILLS_REPO}}/snow-utils-pat" 2>/dev/null || true
-      - cortex skill remove "{{.SKILLS_REPO}}/snow-utils-networks" 2>/dev/null || true
-      - cortex skill add "{{.SKILLS_REPO}}/snow-utils-volumes"
-      - cortex skill add "{{.SKILLS_REPO}}/snow-utils-pat"
-      - cortex skill add "{{.SKILLS_REPO}}/snow-utils-networks"
-      - echo "✓ Skills reloaded"
+      - echo "→ snow-utils-pat/scripts/"
+      - rsync -avh --itemize-changes --include='*.py' --include='*.sql' --exclude='*' . "{{.SKILLS_REPO}}/snow-utils-pat/scripts/"
       - echo ""
-      - echo "⚠ Restart CoCo or start a new chat session for changes to take effect"
+      - echo "→ snow-utils-networks/scripts/"
+      - rsync -avh --itemize-changes --include='*.py' --include='*.sql' --exclude='*' . "{{.SKILLS_REPO}}/snow-utils-networks/scripts/"
+      - echo ""
+      - echo "✓ Scripts synced to {{.SKILLS_REPO}}"

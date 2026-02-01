@@ -27,12 +27,13 @@ from pathlib import Path
 
 import click
 
+DEFAULT_ROLE = "SNOW_UTILS_SA"
+DEFAULT_DB = "SNOW_UTILS"
 
-def run_sql(query: str, connection: str | None = None) -> list | None:
-    """Execute SQL and return parsed JSON result."""
+
+def run_sql(query: str) -> list | None:
+    """Execute SQL and return parsed JSON result. Uses active connection from env."""
     cmd = ["snow", "sql", "--query", query, "--format", "json"]
-    if connection:
-        cmd.extend(["-c", connection])
 
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
@@ -46,28 +47,28 @@ def run_sql(query: str, connection: str | None = None) -> list | None:
     return None
 
 
-def check_database_exists(db_name: str, connection: str | None = None) -> bool:
+def check_database_exists(db_name: str) -> bool:
     """Check if a database exists."""
     try:
-        result = run_sql(f"SHOW DATABASES LIKE '{db_name}'", connection)
+        result = run_sql(f"SHOW DATABASES LIKE '{db_name}'")
         return result is not None and len(result) > 0
     except Exception:
         return False
 
 
-def check_role_exists(role_name: str, connection: str | None = None) -> bool:
+def check_role_exists(role_name: str) -> bool:
     """Check if a role exists."""
     try:
-        result = run_sql(f"SHOW ROLES LIKE '{role_name}'", connection)
+        result = run_sql(f"SHOW ROLES LIKE '{role_name}'")
         return result is not None and len(result) > 0
     except Exception:
         return False
 
 
-def check_user_has_role(role_name: str, connection: str | None = None) -> bool:
+def check_user_has_role(role_name: str) -> bool:
     """Check if current user has the specified role granted."""
     try:
-        result = run_sql("SELECT CURRENT_AVAILABLE_ROLES() AS roles", connection)
+        result = run_sql("SELECT CURRENT_AVAILABLE_ROLES() AS roles")
         if result and len(result) > 0:
             roles_str = result[0].get("ROLES", "[]")
             roles = json.loads(roles_str) if isinstance(roles_str, str) else roles_str
@@ -77,7 +78,7 @@ def check_user_has_role(role_name: str, connection: str | None = None) -> bool:
     return False
 
 
-def run_setup(sa_role: str, db_name: str, script_dir: Path, connection: str | None = None) -> bool:
+def run_setup(sa_role: str, db_name: str, script_dir: Path) -> bool:
     """Run the setup script with ACCOUNTADMIN."""
     setup_sql = script_dir / "snow-utils-setup.sql"
     if not setup_sql.exists():
@@ -87,8 +88,6 @@ def run_setup(sa_role: str, db_name: str, script_dir: Path, connection: str | No
     click.echo(f"\nRunning setup with ACCOUNTADMIN...")
     click.echo(f"  SA_ROLE: {sa_role}")
     click.echo(f"  SNOW_UTILS_DB: {db_name}")
-    if connection:
-        click.echo(f"  Connection: {connection}")
     click.echo()
 
     env = os.environ.copy()
@@ -98,11 +97,9 @@ def run_setup(sa_role: str, db_name: str, script_dir: Path, connection: str | No
     cmd = [
         "snow", "sql",
         "-f", str(setup_sql),
-        "--templating=all",
+        "--templating", "all",
         "--role", "ACCOUNTADMIN"
     ]
-    if connection:
-        cmd.extend(["-c", connection])
 
     result = subprocess.run(cmd, env=env, capture_output=False)
 
@@ -115,18 +112,12 @@ def run_setup(sa_role: str, db_name: str, script_dir: Path, connection: str | No
 
 
 @click.command()
-@click.option("--connection", "-c", envvar="SNOWFLAKE_DEFAULT_CONNECTION_NAME",
-              help="Snowflake connection name (from ~/.snowflake/config.toml)")
-@click.option("--role", "-r", envvar="SA_ROLE", default="SA_ROLE",
-              help="SA role name to check/create")
-@click.option("--db", "-d", envvar="SNOW_UTILS_DB", default="SNOW_UTILS",
-              help="Database name to check/create")
-@click.option("--auto-setup", is_flag=True, help="Automatically run setup if needed")
 @click.option("--quiet", "-q", is_flag=True, help="Suppress output, exit 0 if ready, 1 if not")
-def check(connection: str | None, role: str, db: str, auto_setup: bool, quiet: bool):
+def check(quiet: bool):
     """Check if snow-utils infrastructure is set up.
     
-    Verifies that SNOW_UTILS_DB and SA_ROLE exist. If missing, offers to run setup.
+    Prompts interactively for SA_ROLE and SNOW_UTILS_DB values.
+    Uses the active Snowflake connection (set via SNOWFLAKE_DEFAULT_CONNECTION_NAME).
     
     Exit codes:
       0 - Infrastructure ready
@@ -135,21 +126,32 @@ def check(connection: str | None, role: str, db: str, auto_setup: bool, quiet: b
     """
     script_dir = Path(__file__).parent
 
-    db_exists = check_database_exists(db, connection)
-    role_exists = check_role_exists(role, connection)
-
     if quiet:
+        # Quiet mode - use defaults, no prompts
+        role = os.environ.get("SA_ROLE") or DEFAULT_ROLE
+        db = os.environ.get("SNOW_UTILS_DB") or DEFAULT_DB
+        db_exists = check_database_exists(db)
+        role_exists = check_role_exists(role)
         sys.exit(0 if (db_exists and role_exists) else 1)
 
-    if connection:
-        click.echo(f"Using connection: {connection}\n")
+    # Interactive mode - always prompt
+    click.echo("Snow-utils infrastructure check\n")
+    role = click.prompt("SA Role name", default=DEFAULT_ROLE)
+    db = click.prompt("Database name", default=DEFAULT_DB)
+
+    click.echo(f"\nChecking infrastructure...")
+    click.echo(f"  SA_ROLE: {role}")
+    click.echo(f"  SNOW_UTILS_DB: {db}\n")
+
+    db_exists = check_database_exists(db)
+    role_exists = check_role_exists(role)
 
     if db_exists and role_exists:
         click.echo(click.style("✓ Infrastructure ready", fg="green"))
         click.echo(f"  Database: {db}")
         click.echo(f"  Role: {role}")
 
-        if not check_user_has_role(role, connection):
+        if not check_user_has_role(role):
             click.echo(click.style(f"\n⚠ Note: You don't have {role} granted to your user.", fg="yellow"))
             click.echo(f"  Run: snow sql -q \"GRANT ROLE {role} TO USER <your_username>\"")
 
@@ -166,28 +168,20 @@ def check(connection: str | None, role: str, db: str, auto_setup: bool, quiet: b
     else:
         click.echo(f"  ✓ Role {role} exists")
 
-    if auto_setup:
-        should_setup = True
-    else:
-        click.echo(f"\nSetup will create:")
-        click.echo(f"  - Role: {role} (with scoped privileges)")
-        click.echo(f"  - Database: {db}")
-        click.echo(f"  - Schemas: {db}.NETWORKS, {db}.POLICIES")
-        click.echo(f"\nRequires: ACCOUNTADMIN role")
+    click.echo(f"\nSetup will create:")
+    click.echo(f"  - Role: {role} (with scoped privileges)")
+    click.echo(f"  - Database: {db}")
+    click.echo(f"  - Schemas: {db}.NETWORKS, {db}.POLICIES")
+    click.echo(f"\nRequires: ACCOUNTADMIN role")
 
-        should_setup = click.confirm("\nRun setup now?", default=True)
+    should_setup = click.confirm("\nRun setup now?", default=True)
 
     if should_setup:
-        success = run_setup(role, db, script_dir, connection)
+        success = run_setup(role, db, script_dir)
         sys.exit(0 if success else 1)
     else:
         click.echo("\nTo run setup manually:")
-        click.echo(f"  task snow-utils:setup SA_ROLE={role} SNOW_UTILS_DB={db}")
-        click.echo("  OR")
-        cmd = f"snow sql -f snow-utils-setup.sql --templating=all --role ACCOUNTADMIN"
-        if connection:
-            cmd += f" -c {connection}"
-        click.echo(f"  {cmd}")
+        click.echo(f"  snow sql -f snow-utils-setup.sql --templating all --role ACCOUNTADMIN")
         sys.exit(1)
 
 
