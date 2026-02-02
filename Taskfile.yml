@@ -678,9 +678,9 @@ tasks:
     desc: Check if snow-utils infrastructure is ready
     summary: |
       Verifies that SA_ROLE and SNOW_UTILS_DB exist.
-      
+
       If infrastructure is missing, offers to run setup (requires ACCOUNTADMIN).
-      
+
       Environment variables (from .env):
         SA_ROLE: SA role name to check (default: SA_ROLE)
         SNOW_UTILS_DB: Database name to check (default: SNOW_UTILS)
@@ -715,7 +715,7 @@ tasks:
         task snow-utils:setup SA_ROLE=MY_SA SNOW_UTILS_DB=MY_UTILS    # Override both
     cmds:
       - echo "Creating SA role ${SA_ROLE} and ${SNOW_UTILS_DB} database..."
-      - snow sql -f "{{.TASKFILE_DIR}}/snow-utils-setup.sql" --templating=all
+      - snow sql -f "{{.TASKFILE_DIR}}/snow-utils-setup.sql" --enable-templating ALL
       - echo ""
       - echo "✓ Setup complete!"
       - echo ""
@@ -745,12 +745,15 @@ tasks:
       - echo "Syncing scripts to {{.SKILLS_REPO}}..."
       - echo ""
       - echo "→ snow-utils-volumes/scripts/"
-      - rsync -avh --itemize-changes --include='*.py' --include='*.sql' --exclude='*' . "{{.SKILLS_REPO}}/snow-utils-volumes/scripts/"
+      - rsync -avh --itemize-changes --include='*.py' --include='*.sql' --exclude='*' .
+        "{{.SKILLS_REPO}}/snow-utils-volumes/scripts/"
       - echo ""
       - echo "→ snow-utils-pat/scripts/"
-      - rsync -avh --itemize-changes --include='*.py' --include='*.sql' --exclude='*' . "{{.SKILLS_REPO}}/snow-utils-pat/scripts/"
+      - rsync -avh --itemize-changes --include='*.py' --include='*.sql' --exclude='*' .
+        "{{.SKILLS_REPO}}/snow-utils-pat/scripts/"
       - echo ""
       - echo "→ snow-utils-networks/scripts/"
-      - rsync -avh --itemize-changes --include='*.py' --include='*.sql' --exclude='*' . "{{.SKILLS_REPO}}/snow-utils-networks/scripts/"
+      - rsync -avh --itemize-changes --include='*.py' --include='*.sql' --exclude='*' .
+        "{{.SKILLS_REPO}}/snow-utils-networks/scripts/"
       - echo ""
       - echo "✓ Scripts synced to {{.SKILLS_REPO}}"

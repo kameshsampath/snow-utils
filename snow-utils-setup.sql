@@ -18,42 +18,53 @@
 -- =============================================================================
 -- Snow-Utils Setup Script
 -- =============================================================================
--- Creates the SA role and database with required schemas and grants.
+-- Creates the SA role and database with SCOPED privileges (secure-first).
 --
 -- Environment Variables (from .env):
---   SA_ROLE - Name of the service account role to create
---   PAT_OBJECTS_DB - Name of the database to create
+--   SA_ROLE        - Name of the service account role to create
+--   SNOW_UTILS_DB  - Name of the database to create
+--   SNOWFLAKE_USER - Current user (will be granted SA_ROLE)
+--   SA_ADMIN_ROLE  - Admin role to run setup (e.g., ACCOUNTADMIN)
+--
+-- Security Model:
+--   SA_ROLE gets ONLY database-scoped privileges:
+--     - CREATE NETWORK RULE (in SNOW_UTILS_DB.NETWORKS)
+--     - Database/schema ownership
+--
+--   Account-level operations use SA_ADMIN_ROLE:
+--     - CREATE USER (service accounts)
+--     - CREATE NETWORK POLICY
+--     - CREATE AUTHENTICATION POLICY
+--     - CREATE EXTERNAL VOLUME
+--     - ALTER USER (policy assignments)
 --
 -- Prerequisites:
---   - Must be run by ACCOUNTADMIN or role with CREATE ROLE privilege
---   - After setup, grant the SA role to users who need to run snow-utils
+--   - Must be run by SA_ADMIN_ROLE (default: ACCOUNTADMIN)
 --
 -- Usage:
---   task snow-utils:setup
---   task snow-utils:setup SA_ROLE=MY_SA_ROLE PAT_OBJECTS_DB=MY_DB
---   snow sql -f snow-utils-setup.sql --templating=all --env SA_ROLE=X PAT_OBJECTS_DB=Y
+--   snow sql -f snow-utils-setup.sql --enable-templating ALL --role <SA_ADMIN_ROLE>
 -- =============================================================================
 
-USE ROLE ACCOUNTADMIN;
+USE ROLE <% ctx.env.SA_ADMIN_ROLE %>;
 
 -- =============================================================================
--- Step 1: Create SA Role
+-- Step 1: Create SA Role (scoped privileges only)
 -- =============================================================================
 
 CREATE ROLE IF NOT EXISTS <% ctx.env.SA_ROLE %>
-    COMMENT = 'Role for snow-utils operations (scoped privileges, no grant delegation)';
+    COMMENT = 'Role for snow-utils DB operations (scoped privileges only)';
 
 -- =============================================================================
 -- Step 2: Create Database and Schemas
 -- =============================================================================
 
 CREATE DATABASE IF NOT EXISTS <% ctx.env.SNOW_UTILS_DB %>
-    COMMENT = 'Database for snow-utils objects (network rules, policies, etc.)';
+    COMMENT = 'Database for snow-utils objects (network rules, etc.)';
 
 CREATE SCHEMA IF NOT EXISTS <% ctx.env.SNOW_UTILS_DB %>.NETWORKS
     COMMENT = 'Schema for network rules';
 CREATE SCHEMA IF NOT EXISTS <% ctx.env.SNOW_UTILS_DB %>.POLICIES
-    COMMENT = 'Schema for authentication policies';
+    COMMENT = 'Schema for authentication policies (created by SA_ADMIN_ROLE)';
 
 -- =============================================================================
 -- Step 3: Grant Database and Schema Ownership to SA Role
@@ -64,45 +75,26 @@ GRANT OWNERSHIP ON SCHEMA <% ctx.env.SNOW_UTILS_DB %>.NETWORKS TO ROLE <% ctx.en
 GRANT OWNERSHIP ON SCHEMA <% ctx.env.SNOW_UTILS_DB %>.POLICIES TO ROLE <% ctx.env.SA_ROLE %> COPY CURRENT GRANTS;
 
 -- =============================================================================
--- Step 4: Account-Level Privileges for External Volume Management
+-- Step 4: Schema-Level Privileges for Network Rules
 -- =============================================================================
-
-GRANT CREATE EXTERNAL VOLUME ON ACCOUNT TO ROLE <% ctx.env.SA_ROLE %>;
-
--- =============================================================================
--- Step 5: Account-Level Privileges for User and Policy Management
--- =============================================================================
--- Note: CREATE USER cannot be restricted to TYPE=SERVICE only per Snowflake docs.
--- This is a known limitation - the SA role can create any user type.
-
-GRANT CREATE USER ON ACCOUNT TO ROLE <% ctx.env.SA_ROLE %>;
-GRANT CREATE NETWORK POLICY ON ACCOUNT TO ROLE <% ctx.env.SA_ROLE %>;
-
--- =============================================================================
--- Step 6: Schema-Level Privileges for Network Rules
--- =============================================================================
+-- Network RULES are database objects (scoped to SA_ROLE).
+-- Network POLICIES are account objects (remain with ACCOUNTADMIN).
 
 GRANT CREATE NETWORK RULE ON SCHEMA <% ctx.env.SNOW_UTILS_DB %>.NETWORKS TO ROLE <% ctx.env.SA_ROLE %>;
 GRANT USAGE ON SCHEMA <% ctx.env.SNOW_UTILS_DB %>.NETWORKS TO ROLE <% ctx.env.SA_ROLE %>;
 
 -- =============================================================================
--- Step 7: Schema-Level Privileges for Authentication Policies
--- =============================================================================
-
-GRANT CREATE AUTHENTICATION POLICY ON SCHEMA <% ctx.env.SNOW_UTILS_DB %>.POLICIES TO ROLE <% ctx.env.SA_ROLE %>;
-GRANT USAGE ON SCHEMA <% ctx.env.SNOW_UTILS_DB %>.POLICIES TO ROLE <% ctx.env.SA_ROLE %>;
-
--- =============================================================================
--- Step 8: Grant SA Role to SYSADMIN (Role Hierarchy)
--- =============================================================================
-
-GRANT ROLE <% ctx.env.SA_ROLE %> TO ROLE SYSADMIN;
-
--- =============================================================================
--- Step 9: Future Grants for New Objects
+-- Step 5: Future Grants for New Objects
 -- =============================================================================
 
 GRANT ALL PRIVILEGES ON FUTURE NETWORK RULES IN SCHEMA <% ctx.env.SNOW_UTILS_DB %>.NETWORKS TO ROLE <% ctx.env.SA_ROLE %>;
+
+-- =============================================================================
+-- Step 6: Grant SA Role to Current User and SYSADMIN
+-- =============================================================================
+
+GRANT ROLE <% ctx.env.SA_ROLE %> TO USER <% ctx.env.SNOWFLAKE_USER %>;
+GRANT ROLE <% ctx.env.SA_ROLE %> TO ROLE SYSADMIN;
 
 -- =============================================================================
 -- Verification
@@ -110,4 +102,4 @@ GRANT ALL PRIVILEGES ON FUTURE NETWORK RULES IN SCHEMA <% ctx.env.SNOW_UTILS_DB 
 -- SHOW GRANTS TO ROLE <% ctx.env.SA_ROLE %>;
 -- SHOW GRANTS ON DATABASE <% ctx.env.SNOW_UTILS_DB %>;
 
-SELECT 'Snow-utils setup complete. Role <% ctx.env.SA_ROLE %> with database <% ctx.env.SNOW_UTILS_DB %> created.' AS status;
+SELECT 'Snow-utils setup complete. Role <% ctx.env.SA_ROLE %> granted to <% ctx.env.SNOWFLAKE_USER %>.' AS status;
