@@ -95,10 +95,14 @@ def run_setup(sa_role: str, db_name: str, script_dir: Path) -> bool:
     env["SNOW_UTILS_DB"] = db_name
 
     cmd = [
-        "snow", "sql",
-        "-f", str(setup_sql),
-        "--templating", "all",
-        "--role", "ACCOUNTADMIN"
+        "snow",
+        "sql",
+        "-f",
+        str(setup_sql),
+        "--templating",
+        "all",
+        "--role",
+        "ACCOUNTADMIN",
     ]
 
     result = subprocess.run(cmd, env=env, capture_output=False)
@@ -112,13 +116,15 @@ def run_setup(sa_role: str, db_name: str, script_dir: Path) -> bool:
 
 
 @click.command()
-@click.option("--quiet", "-q", is_flag=True, help="Suppress output, exit 0 if ready, 1 if not")
+@click.option(
+    "--quiet", "-q", is_flag=True, help="Suppress output, exit 0 if ready, 1 if not"
+)
 def check(quiet: bool):
     """Check if snow-utils infrastructure is set up.
-    
+
     Prompts interactively for SA_ROLE and SNOW_UTILS_DB values.
     Uses the active Snowflake connection (set via SNOWFLAKE_DEFAULT_CONNECTION_NAME).
-    
+
     Exit codes:
       0 - Infrastructure ready
       1 - Infrastructure missing (and setup declined or failed)
@@ -136,8 +142,20 @@ def check(quiet: bool):
 
     # Interactive mode - always prompt
     click.echo("Snow-utils infrastructure check\n")
-    role = click.prompt("SA Role name", default=DEFAULT_ROLE)
-    db = click.prompt("Database name", default=DEFAULT_DB)
+
+    # Read SNOWFLAKE_USER from environment for personalized defaults
+    user = os.environ.get("SNOWFLAKE_USER", "").upper()
+    if user:
+        click.echo(f"Detected user: {user}")
+        default_role = f"{user}_SNOW_UTILS_SA"
+        default_db = f"{user}_SNOW_UTILS"
+    else:
+        default_role = DEFAULT_ROLE
+        default_db = DEFAULT_DB
+
+    click.echo()
+    role = click.prompt("SA Role name", default=default_role)
+    db = click.prompt("Database name", default=default_db)
 
     click.echo(f"\nChecking infrastructure...")
     click.echo(f"  SA_ROLE: {role}")
@@ -152,8 +170,15 @@ def check(quiet: bool):
         click.echo(f"  Role: {role}")
 
         if not check_user_has_role(role):
-            click.echo(click.style(f"\n⚠ Note: You don't have {role} granted to your user.", fg="yellow"))
-            click.echo(f"  Run: snow sql -q \"GRANT ROLE {role} TO USER <your_username>\"")
+            click.echo(
+                click.style(
+                    f"\n⚠ Note: You don't have {role} granted to your user.",
+                    fg="yellow",
+                )
+            )
+            click.echo(
+                f'  Run: snow sql -q "GRANT ROLE {role} TO USER <your_username>"'
+            )
 
         sys.exit(0)
 
@@ -181,7 +206,9 @@ def check(quiet: bool):
         sys.exit(0 if success else 1)
     else:
         click.echo("\nTo run setup manually:")
-        click.echo(f"  snow sql -f snow-utils-setup.sql --templating all --role ACCOUNTADMIN")
+        click.echo(
+            f"  snow sql -f snow-utils-setup.sql --templating all --role ACCOUNTADMIN"
+        )
         sys.exit(1)
 
 
