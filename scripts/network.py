@@ -321,6 +321,53 @@ def network_policy_exists(policy_name: str) -> bool:
     return any(p.get("name", "").upper() == policy_name.upper() for p in policies)
 
 
+def get_setup_network_for_user_sql(
+    user: str,
+    db: str,
+    cidrs: list[str],
+    schema: str = "NETWORKS",
+    force: bool = False,
+) -> str:
+    """
+    Generate SQL for creating network rule and policy for a user.
+
+    This returns the complete SQL without executing it, useful for dry-run display.
+
+    Args:
+        user: Username (used for naming rule/policy)
+        db: Database for network rule
+        cidrs: List of IPv4 CIDRs
+        schema: Schema for network rule (default: NETWORKS)
+        force: If True, use CREATE OR REPLACE
+
+    Returns:
+        Complete SQL string for rule and policy creation
+    """
+    rule_name = f"{user}_NETWORK_RULE".upper()
+    policy_name = f"{user}_NETWORK_POLICY".upper()
+    rule_fqn = f"{db.upper()}.{schema.upper()}.{rule_name}"
+
+    rule_sql = get_network_rule_sql(
+        name=rule_name,
+        db=db.upper(),
+        schema=schema.upper(),
+        values=cidrs,
+        mode=NetworkRuleMode.INGRESS,
+        rule_type=NetworkRuleType.IPV4,
+        comment=f"Network rule for {user} access",
+        force=force,
+    )
+
+    policy_sql = get_network_policy_sql(
+        policy_name=policy_name,
+        rule_refs=[rule_fqn],
+        comment=f"Network policy for {user} access",
+        force=force,
+    )
+
+    return f"{rule_sql}\n\n{policy_sql}"
+
+
 def setup_network_for_user(
     user: str,
     db: str,

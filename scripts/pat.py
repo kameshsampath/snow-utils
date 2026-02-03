@@ -31,6 +31,7 @@ import click
 from network import (
     assign_network_policy_to_user,
     cleanup_network_for_user,
+    get_setup_network_for_user_sql,
     setup_network_for_user,
 )
 from snow_utils_common import (
@@ -406,9 +407,9 @@ def create_command(
         pat_name = f"{user}_pat".upper()
 
     cidrs = collect_ipv4_cidrs(
-        allow_local=allow_local,
-        allow_gh=allow_gh,
-        allow_google=allow_google,
+        with_local=allow_local,
+        with_gh=allow_gh,
+        with_google=allow_google,
         extra_cidrs=list(extra_cidrs) if extra_cidrs else None,
     )
     if not cidrs:
@@ -462,7 +463,7 @@ def create_command(
         click.echo(get_service_user_sql(user, role))
         click.echo()
         click.echo("-- Step 2: Create network rule and policy")
-        click.echo(f"-- (via network.setup_network_for_user with {len(cidrs)} CIDRs)")
+        click.echo(get_setup_network_for_user_sql(user=user, db=db, cidrs=cidrs, force=force))
         click.echo()
         click.echo("-- Step 3: Create authentication policy")
         click.echo(get_auth_policy_sql(user, db, default_expiry_days, max_expiry_days))
