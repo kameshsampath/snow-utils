@@ -313,6 +313,8 @@ def cli(ctx: click.Context, verbose: bool, debug: bool) -> None:
     \b
     Commands:
         create  - Create/rotate PAT for service user
+        rotate  - Rotate existing PAT (keep policies)
+        verify  - Test PAT connection
         remove  - Remove PAT and associated objects
     """
     set_snow_cli_options(verbose=verbose, debug=debug)
@@ -590,6 +592,145 @@ def remove_command(
 
     click.echo("=" * 50)
     click.echo("✓ PAT removal completed!")
+    click.echo("=" * 50)
+
+
+@cli.command(name="rotate")
+@click.option("--user", "-u", required=True, envvar="SA_USER", help="Service account user name")
+@click.option("--role", "-r", required=True, envvar="SA_ROLE", help="Role restriction for the PAT")
+@click.option("--pat-name", envvar="SA_PAT", help="Name for the PAT token")
+@click.option(
+    "--env-path", type=click.Path(path_type=Path), default=Path(".env"), help=".env file path"
+)
+@click.option("--skip-verify", is_flag=True, help="Skip connection verification")
+@click.option(
+    "-o", "--output", type=click.Choice(["text", "json"]), default="text", help="Output format"
+)
+def rotate_command(
+    user: str,
+    role: str,
+    pat_name: str | None,
+    env_path: Path,
+    skip_verify: bool,
+    output: str,
+) -> None:
+    """
+    Rotate an existing PAT for a service user.
+
+    This regenerates the PAT token while keeping all policies intact.
+    The new token will be saved to the .env file.
+
+    \b
+    Examples:
+        # Rotate PAT with defaults
+        pat.py rotate --user my_sa --role demo_role
+
+        # Rotate and skip verification
+        pat.py rotate --user my_sa --role demo_role --skip-verify
+    """
+    if not pat_name:
+        pat_name = f"{user}_pat".upper()
+
+    click.echo("=" * 50)
+    click.echo("Snowflake PAT Manager - Rotate")
+    click.echo("=" * 50)
+    click.echo(f"User:     {user}")
+    click.echo(f"Role:     {role}")
+    click.echo(f"PAT Name: {pat_name}")
+    click.echo()
+
+    existing = get_existing_pat(user, pat_name)
+    if not existing:
+        raise click.ClickException(
+            f"PAT '{pat_name}' not found for user {user}. Use 'create' command first."
+        )
+
+    password = create_or_rotate_pat(user=user, pat_role=role, pat_name=pat_name, rotate=True)
+
+    if output == "text":
+        update_env(env_path=env_path, user=user, password=password, pat_role=role)
+
+    if not skip_verify:
+        verify_connection(user=user, password=password, pat_role=role)
+
+    if output == "json":
+        result = {
+            "status": "rotated",
+            "user": user,
+            "pat_name": pat_name,
+            "pat_role": role,
+            "token": password,
+        }
+        click.echo(json.dumps(result, indent=2))
+    else:
+        click.echo()
+        click.echo("=" * 50)
+        click.echo("✓ PAT rotated successfully!")
+        click.echo("=" * 50)
+
+
+@cli.command(name="verify")
+@click.option("--user", "-u", required=True, envvar="SA_USER", help="Service account user name")
+@click.option("--role", "-r", required=True, envvar="SA_ROLE", help="Role for the PAT")
+@click.option("--password", "-p", envvar="SA_PAT", help="PAT token (or use SA_PAT env var)")
+@click.option(
+    "--env-path",
+    type=click.Path(path_type=Path),
+    default=Path(".env"),
+    help=".env file to read token from",
+)
+def verify_command(
+    user: str,
+    role: str,
+    password: str | None,
+    env_path: Path,
+) -> None:
+    """
+    Verify PAT connection works correctly.
+
+    Tests the PAT by connecting to Snowflake and running a simple query.
+    The token can be provided via --password, SA_PAT env var, or read from .env file.
+
+    \b
+    Examples:
+        # Verify using SA_PAT env var
+        pat.py verify --user my_sa --role demo_role
+
+        # Verify with explicit token
+        pat.py verify --user my_sa --role demo_role --password "token..."
+
+        # Verify reading from .env
+        pat.py verify --user my_sa --role demo_role --env-path .env
+    """
+    if not password:
+        if env_path.exists():
+            content = env_path.read_text()
+            import re
+
+            match = re.search(
+                r'^SNOWFLAKE_PASSWORD\s*=\s*["\']?([^"\'#\n]+)["\']?', content, re.MULTILINE
+            )
+            if match:
+                password = match.group(1).strip()
+                click.echo(f"Using token from {env_path}")
+
+    if not password:
+        raise click.ClickException(
+            "No PAT token provided. Use --password, SA_PAT env var, or ensure .env contains SNOWFLAKE_PASSWORD"
+        )
+
+    click.echo("=" * 50)
+    click.echo("Snowflake PAT Manager - Verify")
+    click.echo("=" * 50)
+    click.echo(f"User: {user}")
+    click.echo(f"Role: {role}")
+    click.echo()
+
+    verify_connection(user=user, password=password, pat_role=role)
+
+    click.echo()
+    click.echo("=" * 50)
+    click.echo("✓ PAT verification successful!")
     click.echo("=" * 50)
 
 
