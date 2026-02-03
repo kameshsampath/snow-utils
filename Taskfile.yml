@@ -772,17 +772,18 @@ tasks:
   # ===========================================================================
 
   skills:sync:
-    desc: Sync CLI scripts to snow-utils-skills repo
+    desc: Sync common/ and scripts to snow-utils-skills repo
     vars:
       SKILLS_REPO: '{{.SKILLS_REPO | default (printf "%s/git/kameshsampath/snow-utils-skills" .HOME)}}'
     preconditions:
       - sh: test -d "{{.SKILLS_REPO}}"
         msg: "Skills repo not found at {{.SKILLS_REPO}}. Set SKILLS_REPO env var."
     cmds:
-      - echo "Syncing scripts to {{.SKILLS_REPO}}..."
+      - echo "Syncing to {{.SKILLS_REPO}}..."
       - echo ""
-      - echo "→ snow-utils-volumes/scripts/"
-      - rsync -avh --itemize-changes scripts/extvolume.py "{{.SKILLS_REPO}}/snow-utils-volumes/scripts/"
+      - echo "→ common/ (shared library)"
+      - rsync -avh --delete --exclude '__pycache__' --exclude '.venv' --exclude 'uv.lock' common/
+        "{{.SKILLS_REPO}}/common/"
       - echo ""
       - echo "→ snow-utils-pat/scripts/"
       - rsync -avh --itemize-changes scripts/pat.py scripts/network.py "{{.SKILLS_REPO}}/snow-utils-pat/scripts/"
@@ -790,9 +791,11 @@ tasks:
       - echo "→ snow-utils-networks/scripts/"
       - rsync -avh --itemize-changes scripts/network.py "{{.SKILLS_REPO}}/snow-utils-networks/scripts/"
       - echo ""
-      - echo "→ common/ to each skill"
-      - rsync -avh --itemize-changes common/ "{{.SKILLS_REPO}}/snow-utils-volumes/common/"
-      - rsync -avh --itemize-changes common/ "{{.SKILLS_REPO}}/snow-utils-pat/common/"
-      - rsync -avh --itemize-changes common/ "{{.SKILLS_REPO}}/snow-utils-networks/common/"
+      - echo "→ snow-utils-volumes/scripts/"
+      - rsync -avh --itemize-changes scripts/extvolume.py "{{.SKILLS_REPO}}/snow-utils-volumes/scripts/"
       - echo ""
-      - echo "✓ Scripts synced to {{.SKILLS_REPO}}"
+      - echo "✓ Sync complete. Review changes in {{.SKILLS_REPO}}"
+      - echo ""
+      - echo "Next steps:"
+      - echo "  cd {{.SKILLS_REPO}}"
+      - echo "  git status"
