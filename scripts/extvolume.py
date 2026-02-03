@@ -35,8 +35,7 @@ from typing import Any
 import boto3
 import click
 from botocore.exceptions import ClientError
-
-from snow_common import (
+from snow_utils_common import (
     mask_sensitive_string,
     run_snow_sql,
     run_snow_sql_stdin,
@@ -566,8 +565,8 @@ def describe_external_volume(volume_name: str) -> dict[str, str]:
             "Could not find STORAGE_AWS_IAM_USER_ARN in external volume description"
         )
 
-    iam_user_arn = properties.get('iam_user_arn')
-    external_id = properties.get('external_id')
+    iam_user_arn = properties.get("iam_user_arn")
+    external_id = properties.get("external_id")
     click.echo(f"✓ Snowflake IAM User ARN: {mask_sensitive_string(iam_user_arn, 'arn')}")
     click.echo(f"✓ External ID: {mask_sensitive_string(external_id, 'external_id')}")
 
@@ -753,7 +752,8 @@ def cli(
     help="Preview what would be created without making changes",
 )
 @click.option(
-    "--force", "-f",
+    "--force",
+    "-f",
     is_flag=True,
     help="Overwrite existing external volume (CREATE OR REPLACE)",
 )
@@ -889,7 +889,8 @@ def create(
         click.echo("Snowflake Objects (UPPERCASE, underscores):")
         click.echo(f"  External Volume:  {config.volume_name}")
         ext_id_display = (
-            config.external_id if dry_run
+            config.external_id
+            if dry_run
             else mask_sensitive_string(config.external_id, "external_id")
         )
         click.echo(f"  External ID:      {ext_id_display}")

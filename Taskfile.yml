@@ -26,9 +26,9 @@ vars:
   # Use uv run to automatically use the project's venv from any directory
   PYTHON: uv run --project {{.TASKFILE_DIR}}
   # CLI scripts
-  PAT_CLI: "{{.PYTHON}} {{.TASKFILE_DIR}}/pat.py"
-  EXTVOLUME_CLI: "{{.PYTHON}} {{.TASKFILE_DIR}}/extvolume.py"
-  NETWORK_CLI: "{{.PYTHON}} {{.TASKFILE_DIR}}/network.py"
+  PAT_CLI: "{{.PYTHON}} {{.TASKFILE_DIR}}/scripts/pat.py"
+  EXTVOLUME_CLI: "{{.PYTHON}} {{.TASKFILE_DIR}}/scripts/extvolume.py"
+  NETWORK_CLI: "{{.PYTHON}} {{.TASKFILE_DIR}}/scripts/network.py"
   # Default bucket name for demos
   BUCKET: iceberg-demo
   # AWS region
@@ -690,7 +690,7 @@ tasks:
         task snow-utils:check -- --quiet        # Silent check (exit code only)
         task snow-utils:check -- --auto-setup   # Auto-run setup if needed
     cmds:
-      - "{{.PYTHON}} {{.TASKFILE_DIR}}/check_setup.py {{.CLI_ARGS}}"
+      - "{{.PYTHON}} -m snow_utils_common.check_setup {{.CLI_ARGS}}"
 
   snow-utils:setup:
     desc: Create SA role and SNOW_UTILS database with required privileges
@@ -715,7 +715,7 @@ tasks:
         task snow-utils:setup SA_ROLE=MY_SA SNOW_UTILS_DB=MY_UTILS    # Override both
     cmds:
       - echo "Creating SA role ${SA_ROLE} and ${SNOW_UTILS_DB} database..."
-      - snow sql -f "{{.TASKFILE_DIR}}/snow-utils-setup.sql" --enable-templating ALL
+      - snow sql -f "{{.TASKFILE_DIR}}/common/src/snow_utils_common/snow-utils-setup.sql" --enable-templating ALL
       - echo ""
       - echo "✓ Setup complete!"
       - echo ""
@@ -745,15 +745,17 @@ tasks:
       - echo "Syncing scripts to {{.SKILLS_REPO}}..."
       - echo ""
       - echo "→ snow-utils-volumes/scripts/"
-      - rsync -avh --itemize-changes --include='*.py' --include='*.sql' --exclude='*' .
-        "{{.SKILLS_REPO}}/snow-utils-volumes/scripts/"
+      - rsync -avh --itemize-changes scripts/extvolume.py "{{.SKILLS_REPO}}/snow-utils-volumes/scripts/"
       - echo ""
       - echo "→ snow-utils-pat/scripts/"
-      - rsync -avh --itemize-changes --include='*.py' --include='*.sql' --exclude='*' .
-        "{{.SKILLS_REPO}}/snow-utils-pat/scripts/"
+      - rsync -avh --itemize-changes scripts/pat.py scripts/network.py "{{.SKILLS_REPO}}/snow-utils-pat/scripts/"
       - echo ""
       - echo "→ snow-utils-networks/scripts/"
-      - rsync -avh --itemize-changes --include='*.py' --include='*.sql' --exclude='*' .
-        "{{.SKILLS_REPO}}/snow-utils-networks/scripts/"
+      - rsync -avh --itemize-changes scripts/network.py "{{.SKILLS_REPO}}/snow-utils-networks/scripts/"
+      - echo ""
+      - echo "→ common/ to each skill"
+      - rsync -avh --itemize-changes common/ "{{.SKILLS_REPO}}/snow-utils-volumes/common/"
+      - rsync -avh --itemize-changes common/ "{{.SKILLS_REPO}}/snow-utils-pat/common/"
+      - rsync -avh --itemize-changes common/ "{{.SKILLS_REPO}}/snow-utils-networks/common/"
       - echo ""
       - echo "✓ Scripts synced to {{.SKILLS_REPO}}"

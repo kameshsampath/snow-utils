@@ -1,0 +1,19 @@
+[project]
+name = "snow-utils-common"
+version = "0.1.0"
+description = "Shared utilities for snow-utils tools"
+requires-python = ">=3.12"
+dependencies = [
+    "click>=8.0",
+    "requests>=2.28",
+]
+
+[project.scripts]
+check-setup = "snow_utils_common.check_setup:check"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/snow_utils_common"]

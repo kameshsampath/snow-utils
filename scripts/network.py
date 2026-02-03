@@ -23,18 +23,15 @@ Provides:
 """
 
 import click
-
-from network_presets import (
+from snow_utils_common import (
     NetworkRuleMode,
     NetworkRuleType,
     collect_ipv4_cidrs,
     get_valid_types_for_mode,
-    validate_mode_type,
-)
-from snow_common import (
     run_snow_sql,
     run_snow_sql_stdin,
     set_snow_cli_options,
+    validate_mode_type,
 )
 
 
@@ -150,8 +147,7 @@ def create_network_rule(
     if not validate_mode_type(mode, rule_type):
         valid = get_valid_types_for_mode(mode)
         raise click.ClickException(
-            f"Invalid type '{rule_type.value}' for mode '{mode.value}'. "
-            f"Valid types: {valid}"
+            f"Invalid type '{rule_type.value}' for mode '{mode.value}'. Valid types: {valid}"
         )
 
     sql = get_network_rule_sql(name, db, schema, values, mode, rule_type, comment, force)
@@ -160,8 +156,7 @@ def create_network_rule(
         click.echo(sql)
     else:
         setup_sql = (
-            f"CREATE DATABASE IF NOT EXISTS {db};\n"
-            f"CREATE SCHEMA IF NOT EXISTS {db}.{schema};\n"
+            f"CREATE DATABASE IF NOT EXISTS {db};\nCREATE SCHEMA IF NOT EXISTS {db}.{schema};\n"
         )
         run_snow_sql_stdin(setup_sql + sql)
 
@@ -367,19 +362,23 @@ def policy() -> None:
 @click.option("--name", "-n", required=True, envvar="NW_RULE_NAME", help="Network rule name")
 @click.option("--db", required=True, envvar="NW_RULE_DB", help="Database for rule")
 @click.option(
-    "--schema", "-s",
+    "--schema",
+    "-s",
     default="NETWORKS",
     envvar="NW_RULE_SCHEMA",
     help="Schema (default: NETWORKS)",
 )
 @click.option(
-    "--mode", "-m",
+    "--mode",
+    "-m",
     type=click.Choice(MODE_CHOICES, case_sensitive=False),
     default="ingress",
     help="Rule mode (default: ingress)",
 )
 @click.option(
-    "--type", "-t", "rule_type",
+    "--type",
+    "-t",
+    "rule_type",
     type=click.Choice(TYPE_CHOICES, case_sensitive=False),
     default="ipv4",
     help="Value type (default: ipv4)",
@@ -394,12 +393,14 @@ def policy() -> None:
 @click.option("--allow-google", "-g", is_flag=True, help="Include Google IPs (IPV4 only)")
 @click.option("--dry-run", is_flag=True, help="Preview SQL without executing")
 @click.option(
-    "--force", "-f",
+    "--force",
+    "-f",
     is_flag=True,
     help="Overwrite existing rule/policy (CREATE OR REPLACE)",
 )
 @click.option(
-    "--policy", "-p",
+    "--policy",
+    "-p",
     "policy_name",
     help="Also create/update network policy with this name",
 )
@@ -541,7 +542,8 @@ def rule_list_cmd(db: str, schema: str) -> None:
 @policy.command(name="create")
 @click.option("--name", "-n", required=True, help="Network policy name")
 @click.option(
-    "--rules", "-r",
+    "--rules",
+    "-r",
     required=True,
     help="Comma-separated fully qualified rule names (db.schema.rule)",
 )
@@ -568,7 +570,8 @@ def policy_create_cmd(name: str, rules: str, dry_run: bool, force: bool) -> None
 @policy.command(name="alter")
 @click.option("--name", "-n", required=True, help="Network policy name")
 @click.option(
-    "--rules", "-r",
+    "--rules",
+    "-r",
     required=True,
     help="Comma-separated fully qualified rule names (db.schema.rule)",
 )

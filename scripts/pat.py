@@ -28,14 +28,13 @@ import subprocess
 from pathlib import Path
 
 import click
-
 from network import (
     assign_network_policy_to_user,
     cleanup_network_for_user,
     setup_network_for_user,
 )
-from network_presets import collect_ipv4_cidrs
-from snow_common import (
+from snow_utils_common import (
+    collect_ipv4_cidrs,
     get_snow_cli_options,
     run_snow_sql,
     run_snow_sql_stdin,
@@ -347,12 +346,14 @@ def cli(ctx: click.Context, verbose: bool, debug: bool) -> None:
 @click.option("--max-expiry-days", default=90, type=int, help="Maximum PAT expiry days")
 @click.option("--dry-run", is_flag=True, help="Preview without making changes")
 @click.option(
-    "--force", "-f",
+    "--force",
+    "-f",
     is_flag=True,
     help="Overwrite existing network rule/policy (CREATE OR REPLACE)",
 )
 @click.option(
-    "--output", "-o",
+    "--output",
+    "-o",
     type=click.Choice(["text", "json"]),
     default="text",
     help="Output format",
