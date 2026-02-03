@@ -69,24 +69,35 @@ def get_snowflake_account() -> str:
     return account
 
 
-def get_service_user_sql(user: str, pat_role: str) -> str:
+def infer_comment_prefix(user: str) -> str:
+    """Infer comment prefix from user name by stripping common suffixes."""
+    upper_user = user.upper()
+    for suffix in ("_RUNNER", "_SA", "_SERVICE", "_USER"):
+        if upper_user.endswith(suffix):
+            return upper_user[: -len(suffix)]
+    return upper_user
+
+
+def get_service_user_sql(user: str, pat_role: str, comment_prefix: str) -> str:
     """Generate SQL for creating service user (idempotent)."""
     return f"""USE ROLE accountadmin;
 CREATE USER IF NOT EXISTS {user}
     TYPE = SERVICE
-    COMMENT = 'Service user for PAT access';
+    COMMENT = '{comment_prefix} service account - managed by snow-utils-pat';
 GRANT ROLE {pat_role} TO USER {user};"""
 
 
-def setup_service_user(user: str, pat_role: str) -> None:
+def setup_service_user(user: str, pat_role: str, comment_prefix: str) -> None:
     """Create service user and grant the PAT role (idempotent)."""
     click.echo(f"Setting up service user: {user}")
-    sql = get_service_user_sql(user, pat_role)
+    sql = get_service_user_sql(user, pat_role, comment_prefix)
     run_snow_sql_stdin(sql)
     click.echo(f"✓ Service user {user} configured with role {pat_role}")
 
 
-def get_auth_policy_sql(user: str, db: str, default_expiry_days: int, max_expiry_days: int) -> str:
+def get_auth_policy_sql(
+    user: str, db: str, default_expiry_days: int, max_expiry_days: int, comment_prefix: str
+) -> str:
     """Generate SQL for creating authentication policy (idempotent)."""
     auth_policy_name = f"{user}_auth_policy".upper()
 
@@ -97,15 +108,18 @@ CREATE OR ALTER AUTHENTICATION POLICY {db}.POLICIES.{auth_policy_name}
         default_expiry_in_days = {default_expiry_days},
         max_expiry_in_days = {max_expiry_days},
         network_policy_evaluation = ENFORCED_REQUIRED
-    );
+    )
+    COMMENT = '{comment_prefix} PAT auth policy - managed by snow-utils-pat';
 
 ALTER USER {user} SET AUTHENTICATION POLICY {db}.POLICIES.{auth_policy_name};"""
 
 
-def setup_auth_policy(user: str, db: str, default_expiry_days: int, max_expiry_days: int) -> None:
+def setup_auth_policy(
+    user: str, db: str, default_expiry_days: int, max_expiry_days: int, comment_prefix: str
+) -> None:
     """Create authentication policy for PAT access (idempotent)."""
     click.echo("Setting up authentication policy...")
-    sql = get_auth_policy_sql(user, db, default_expiry_days, max_expiry_days)
+    sql = get_auth_policy_sql(user, db, default_expiry_days, max_expiry_days, comment_prefix)
     run_snow_sql_stdin(sql)
     click.echo("✓ Authentication policy configured")
 
@@ -305,8 +319,15 @@ def verify_connection(user: str, password: str, pat_role: str) -> None:
 @click.group(invoke_without_command=True)
 @click.option("--verbose", "-v", is_flag=True, help="Enable verbose output")
 @click.option("--debug", "-d", is_flag=True, help="Enable debug output")
+@click.option(
+    "--comment",
+    "-c",
+    envvar="SNOW_UTILS_COMMENT",
+    default=None,
+    help="Comment prefix for SQL resources (inferred from SA_USER if not provided)",
+)
 @click.pass_context
-def cli(ctx: click.Context, verbose: bool, debug: bool) -> None:
+def cli(ctx: click.Context, verbose: bool, debug: bool, comment: str | None) -> None:
     """
     Snowflake PAT Manager - Manage service users with programmatic access tokens.
 
@@ -318,6 +339,8 @@ def cli(ctx: click.Context, verbose: bool, debug: bool) -> None:
         remove  - Remove PAT and associated objects
     """
     set_snow_cli_options(verbose=verbose, debug=debug)
+    ctx.ensure_object(dict)
+    ctx.obj["comment"] = comment
 
     if ctx.invoked_subcommand is None:
         click.echo(ctx.get_help())
@@ -345,8 +368,18 @@ def cli(ctx: click.Context, verbose: bool, debug: bool) -> None:
 @click.option("--allow-gh", is_flag=True, default=False, help="Include GitHub Actions IPs")
 @click.option("--allow-google", is_flag=True, default=False, help="Include Google IPs")
 @click.option("--extra-cidrs", multiple=True, help="Additional CIDRs (can be repeated)")
-@click.option("--default-expiry-days", default=45, type=int, help="Default PAT expiry days")
-@click.option("--max-expiry-days", default=90, type=int, help="Maximum PAT expiry days")
+@click.option(
+    "--default-expiry-days",
+    default=15,
+    type=int,
+    help="Default PAT expiry days (Snowflake default: 15)",
+)
+@click.option(
+    "--max-expiry-days",
+    default=365,
+    type=int,
+    help="Maximum PAT expiry days (Snowflake default: 365)",
+)
 @click.option("--dry-run", is_flag=True, help="Preview without making changes")
 @click.option(
     "--force",
@@ -361,7 +394,9 @@ def cli(ctx: click.Context, verbose: bool, debug: bool) -> None:
     default="text",
     help="Output format",
 )
+@click.pass_context
 def create_command(
+    ctx: click.Context,
     user: str,
     role: str,
     db: str,
@@ -420,6 +455,8 @@ def create_command(
             "Use --allow-local (default), --allow-gh, --allow-google, or --extra-cidrs"
         )
 
+    comment_prefix = ctx.obj.get("comment") or infer_comment_prefix(user)
+
     def build_result(status: str, token: str | None = None) -> dict:
         result = {
             "status": status,
@@ -427,6 +464,7 @@ def create_command(
             "pat_name": pat_name,
             "pat_role": role,
             "database": db,
+            "comment_prefix": comment_prefix,
             "resources": {
                 "auth_policy": f"{db}.POLICIES.{user}_AUTH_POLICY".upper(),
                 "network_rule": f"{db}.NETWORKS.{user}_NETWORK_RULE".upper(),
@@ -462,23 +500,31 @@ def create_command(
         click.echo("SQL that would be executed:")
         click.echo("─" * 60)
         click.echo("-- Step 1: Create service user")
-        click.echo(get_service_user_sql(user, role))
+        click.echo(get_service_user_sql(user, role, comment_prefix))
         click.echo()
         click.echo("-- Step 2: Create network rule and policy")
-        click.echo(get_setup_network_for_user_sql(user=user, db=db, cidrs=cidrs, force=force))
+        click.echo(
+            get_setup_network_for_user_sql(
+                user=user, db=db, cidrs=cidrs, force=force, comment_prefix=comment_prefix
+            )
+        )
         click.echo()
         click.echo("-- Step 3: Create authentication policy")
-        click.echo(get_auth_policy_sql(user, db, default_expiry_days, max_expiry_days))
+        click.echo(
+            get_auth_policy_sql(user, db, default_expiry_days, max_expiry_days, comment_prefix)
+        )
         click.echo()
         click.echo("-- Step 4: Create PAT")
         click.echo(get_pat_sql(user, role, pat_name))
         click.echo("─" * 60)
         return
 
-    setup_service_user(user=user, pat_role=role)
+    setup_service_user(user=user, pat_role=role, comment_prefix=comment_prefix)
 
     click.echo(f"Setting up network rule and policy ({len(cidrs)} CIDRs)...")
-    rule_fqn, policy_name = setup_network_for_user(user=user, db=db, cidrs=cidrs, force=force)
+    rule_fqn, policy_name = setup_network_for_user(
+        user=user, db=db, cidrs=cidrs, force=force, comment_prefix=comment_prefix
+    )
     click.echo(f"✓ Network rule: {rule_fqn}")
     click.echo(f"✓ Network policy: {policy_name}")
     assign_network_policy_to_user(user, policy_name)
@@ -489,6 +535,7 @@ def create_command(
         db=db,
         default_expiry_days=default_expiry_days,
         max_expiry_days=max_expiry_days,
+        comment_prefix=comment_prefix,
     )
 
     password = create_or_rotate_pat(user=user, pat_role=role, pat_name=pat_name, rotate=rotate)

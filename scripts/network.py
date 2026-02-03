@@ -327,6 +327,7 @@ def get_setup_network_for_user_sql(
     cidrs: list[str],
     schema: str = "NETWORKS",
     force: bool = False,
+    comment_prefix: str | None = None,
 ) -> str:
     """
     Generate SQL for creating network rule and policy for a user.
@@ -339,6 +340,7 @@ def get_setup_network_for_user_sql(
         cidrs: List of IPv4 CIDRs
         schema: Schema for network rule (default: NETWORKS)
         force: If True, use CREATE OR REPLACE
+        comment_prefix: Comment prefix for SQL resources (inferred from user if not provided)
 
     Returns:
         Complete SQL string for rule and policy creation
@@ -346,6 +348,7 @@ def get_setup_network_for_user_sql(
     rule_name = f"{user}_NETWORK_RULE".upper()
     policy_name = f"{user}_NETWORK_POLICY".upper()
     rule_fqn = f"{db.upper()}.{schema.upper()}.{rule_name}"
+    ctx = comment_prefix or user.upper()
 
     rule_sql = get_network_rule_sql(
         name=rule_name,
@@ -354,14 +357,14 @@ def get_setup_network_for_user_sql(
         values=cidrs,
         mode=NetworkRuleMode.INGRESS,
         rule_type=NetworkRuleType.IPV4,
-        comment=f"Network rule for {user} access",
+        comment=f"{ctx} network rule - managed by snow-utils-pat",
         force=force,
     )
 
     policy_sql = get_network_policy_sql(
         policy_name=policy_name,
         rule_refs=[rule_fqn],
-        comment=f"Network policy for {user} access",
+        comment=f"{ctx} network policy - managed by snow-utils-pat",
         force=force,
     )
 
@@ -375,6 +378,7 @@ def setup_network_for_user(
     schema: str = "NETWORKS",
     dry_run: bool = False,
     force: bool = False,
+    comment_prefix: str | None = None,
 ) -> tuple[str, str]:
     """
     Create network rule and policy for a user (idempotent).
@@ -388,12 +392,14 @@ def setup_network_for_user(
         cidrs: List of IPv4 CIDRs
         schema: Schema for network rule (default: NETWORKS)
         dry_run: If True, only print SQL
+        comment_prefix: Comment prefix for SQL resources (inferred from user if not provided)
 
     Returns:
         Tuple of (rule_fqn, policy_name)
     """
     rule_name = f"{user}_NETWORK_RULE".upper()
     policy_name = f"{user}_NETWORK_POLICY".upper()
+    ctx = comment_prefix or user.upper()
 
     rule_fqn = create_network_rule(
         name=rule_name,
@@ -402,7 +408,7 @@ def setup_network_for_user(
         values=cidrs,
         mode=NetworkRuleMode.INGRESS,
         rule_type=NetworkRuleType.IPV4,
-        comment=f"Network rule for {user} access",
+        comment=f"{ctx} network rule - managed by snow-utils-pat",
         dry_run=dry_run,
         force=force,
     )
@@ -410,7 +416,7 @@ def setup_network_for_user(
     create_network_policy(
         policy_name=policy_name,
         rule_refs=[rule_fqn],
-        comment=f"Network policy for {user} access",
+        comment=f"{ctx} network policy - managed by snow-utils-pat",
         dry_run=dry_run,
         force=force,
     )
