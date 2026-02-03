@@ -206,7 +206,7 @@ tasks:
         vars:
           CLI_ARGS: "--quiet"
     cmds:
-      - "{{.NETWORK_CLI}} create {{.CLI_ARGS}}"
+      - "{{.NETWORK_CLI}} rule create {{.CLI_ARGS}}"
     env:
       NW_RULE_NAME: "{{.NW_RULE_NAME}}"
       NW_RULE_DB: "{{.NW_RULE_DB}}"
@@ -230,7 +230,7 @@ tasks:
         vars:
           CLI_ARGS: "--quiet"
     cmds:
-      - "{{.NETWORK_CLI}} github {{.CLI_ARGS}}"
+      - "{{.NETWORK_CLI}} rule create --allow-gh {{.CLI_ARGS}}"
     env:
       NW_RULE_NAME: "{{.NW_RULE_NAME}}"
       NW_RULE_DB: "{{.NW_RULE_DB}}"
@@ -253,7 +253,7 @@ tasks:
         vars:
           CLI_ARGS: "--quiet"
     cmds:
-      - "{{.NETWORK_CLI}} google {{.CLI_ARGS}}"
+      - "{{.NETWORK_CLI}} rule create --allow-google {{.CLI_ARGS}}"
     env:
       NW_RULE_NAME: "{{.NW_RULE_NAME}}"
       NW_RULE_DB: "{{.NW_RULE_DB}}"
@@ -276,7 +276,7 @@ tasks:
         vars:
           CLI_ARGS: "--quiet"
     cmds:
-      - "{{.NETWORK_CLI}} local {{.CLI_ARGS}}"
+      - "{{.NETWORK_CLI}} rule create --no-gh --no-google {{.CLI_ARGS}}"
     env:
       NW_RULE_NAME: "{{.NW_RULE_NAME}}"
       NW_RULE_DB: "{{.NW_RULE_DB}}"
@@ -295,7 +295,7 @@ tasks:
         task networks:policy -- --name my_policy --rules "DB.NETWORKS.RULE1,DB.NETWORKS.RULE2"
         task networks:policy -- --name my_policy --rules "DB.NETWORKS.RULE3" --alter
     cmds:
-      - "{{.NETWORK_CLI}} policy {{.CLI_ARGS}}"
+      - "{{.NETWORK_CLI}} policy create {{.CLI_ARGS}}"
 
   networks:list-rules:
     desc: List network rules in a schema
@@ -306,7 +306,7 @@ tasks:
         task networks:list-rules NW_RULE_DB=my_db
         task networks:list-rules NW_RULE_DB=my_db NW_RULE_SCHEMA=NETWORKS
     cmds:
-      - "{{.NETWORK_CLI}} list-rules {{.CLI_ARGS}}"
+      - "{{.NETWORK_CLI}} rule list {{.CLI_ARGS}}"
     env:
       NW_RULE_DB: "{{.NW_RULE_DB}}"
       NW_RULE_SCHEMA: "{{.NW_RULE_SCHEMA}}"
@@ -317,7 +317,44 @@ tasks:
   networks:list-policies:
     desc: List all network policies
     cmds:
-      - "{{.NETWORK_CLI}} list-policies"
+      - "{{.NETWORK_CLI}} policy list"
+
+  networks:update-rule:
+    desc: Update (replace) values in an existing network rule
+    summary: |
+      Updates an existing network rule with new CIDRs.
+
+      This REPLACES all values - use when your IP changes or you need to
+      modify allowed IPs for a PAT user.
+
+      Environment variables (can be set in .env):
+        NW_RULE_NAME: Network rule name
+        NW_RULE_DB: Database containing the rule
+        NW_RULE_SCHEMA: Schema containing the rule (default: NETWORKS)
+
+      Options:
+        --allow-local: Include local public IP (default: ON)
+        --allow-gh: Include GitHub Actions IPs
+        --allow-google: Include Google IPs
+        --values: Custom comma-separated CIDRs
+
+      Example:
+        task networks:update-rule NW_RULE_NAME=my_rule NW_RULE_DB=my_db
+        task networks:update-rule NW_RULE_NAME=ci_rule NW_RULE_DB=my_db -- --allow-gh
+    deps:
+      - task: snow-utils:check
+        vars:
+          CLI_ARGS: "--quiet"
+    cmds:
+      - "{{.NETWORK_CLI}} rule update {{.CLI_ARGS}}"
+    env:
+      NW_RULE_NAME: "{{.NW_RULE_NAME}}"
+      NW_RULE_DB: "{{.NW_RULE_DB}}"
+      NW_RULE_SCHEMA: "{{.NW_RULE_SCHEMA}}"
+    vars:
+      NW_RULE_NAME: '{{.NW_RULE_NAME | default ""}}'
+      NW_RULE_DB: '{{.NW_RULE_DB | default ""}}'
+      NW_RULE_SCHEMA: '{{.NW_RULE_SCHEMA | default "NETWORKS"}}'
 
   networks:delete-rule:
     desc: Delete a network rule
@@ -327,7 +364,7 @@ tasks:
       Example:
         task networks:delete-rule NW_RULE_NAME=old_rule NW_RULE_DB=my_db
     cmds:
-      - "{{.NETWORK_CLI}} delete-rule --yes {{.CLI_ARGS}}"
+      - "{{.NETWORK_CLI}} rule delete --yes {{.CLI_ARGS}}"
     env:
       NW_RULE_NAME: "{{.NW_RULE_NAME}}"
       NW_RULE_DB: "{{.NW_RULE_DB}}"
@@ -347,7 +384,7 @@ tasks:
         task networks:delete-policy -- --name my_policy
         task networks:delete-policy -- --name my_policy --user my_user
     cmds:
-      - "{{.NETWORK_CLI}} delete-policy --yes {{.CLI_ARGS}}"
+      - "{{.NETWORK_CLI}} policy delete --yes {{.CLI_ARGS}}"
 
   # ===========================================================================
   # External Volume Tasks

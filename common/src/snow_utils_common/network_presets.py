@@ -67,6 +67,11 @@ def get_valid_types_for_mode(mode: NetworkRuleMode) -> list[str]:
     return [t.value for t in VALID_MODE_TYPES.get(mode, [])]
 
 
+def _is_ipv4_cidr(cidr: str) -> bool:
+    """Check if a CIDR is IPv4 (not IPv6). IPv6 CIDRs contain ':'."""
+    return ":" not in cidr
+
+
 @lru_cache(maxsize=1)
 def get_github_actions_ips() -> tuple[str, ...]:
     """
@@ -75,11 +80,15 @@ def get_github_actions_ips() -> tuple[str, ...]:
     Returns a tuple for cacheability. The GitHub meta API provides
     IP ranges used by GitHub Actions runners.
 
+    Note: Snowflake network rules only support IPv4, so IPv6 ranges
+    are filtered out.
+
     See: https://api.github.com/meta
     """
     response = requests.get("https://api.github.com/meta", timeout=30)
     response.raise_for_status()
-    return tuple(response.json().get("actions", []))
+    all_ips = response.json().get("actions", [])
+    return tuple(ip for ip in all_ips if _is_ipv4_cidr(ip))
 
 
 @lru_cache(maxsize=1)

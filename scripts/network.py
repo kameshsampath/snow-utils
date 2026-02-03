@@ -208,6 +208,93 @@ def alter_network_policy(
         run_snow_sql_stdin(sql)
 
 
+def get_update_network_rule_sql(
+    name: str,
+    db: str,
+    schema: str,
+    values: list[str],
+) -> str:
+    """
+    Generate SQL for updating (replacing) values in an existing network rule.
+
+    Uses CREATE OR REPLACE to atomically update the rule with new values.
+
+    Args:
+        name: Network rule name
+        db: Database name
+        schema: Schema name
+        values: New list of values (CIDRs, hosts, VPC IDs)
+
+    Returns:
+        ALTER NETWORK RULE SQL statement
+    """
+    value_list = ", ".join(f"'{v}'" for v in values)
+    return f"ALTER NETWORK RULE {db}.{schema}.{name} SET VALUE_LIST = ({value_list});"
+
+
+def update_network_rule(
+    name: str,
+    db: str,
+    schema: str,
+    values: list[str],
+    dry_run: bool = False,
+) -> str:
+    """
+    Update an existing network rule with new values.
+
+    Args:
+        name: Network rule name
+        db: Database name
+        schema: Schema name
+        values: New list of values
+        dry_run: If True, only print SQL without executing
+
+    Returns:
+        Fully qualified network rule name (db.schema.name)
+    """
+    sql = get_update_network_rule_sql(name, db, schema, values)
+
+    if dry_run:
+        click.echo(sql)
+    else:
+        run_snow_sql_stdin(sql)
+
+    return f"{db}.{schema}.{name}"
+
+
+def update_network_for_user(
+    user: str,
+    db: str,
+    cidrs: list[str],
+    schema: str = "NETWORKS",
+    dry_run: bool = False,
+) -> str:
+    """
+    Update the network rule CIDRs for an existing user.
+
+    This is a convenience function for updating a user's network access
+    (e.g., when IP changes or adding new IPs).
+
+    Args:
+        user: Username (used to derive rule name: {user}_NETWORK_RULE)
+        db: Database containing the network rule
+        cidrs: New list of IPv4 CIDRs
+        schema: Schema containing the rule (default: NETWORKS)
+        dry_run: If True, only print SQL
+
+    Returns:
+        Fully qualified network rule name
+    """
+    rule_name = f"{user}_NETWORK_RULE".upper()
+    return update_network_rule(
+        name=rule_name,
+        db=db.upper(),
+        schema=schema.upper(),
+        values=cidrs,
+        dry_run=dry_run,
+    )
+
+
 def delete_network_rule(name: str, db: str, schema: str) -> None:
     """Delete a network rule (idempotent)."""
     run_snow_sql(f"DROP NETWORK RULE IF EXISTS {db}.{schema}.{name}")
@@ -505,6 +592,69 @@ def rule_create(
             create_network_policy(policy_upper, [fqn], dry_run=dry_run, force=force)
             if not dry_run:
                 click.echo(f"✓ Created policy: {policy_upper}")
+
+
+@rule.command(name="update")
+@click.option("--name", "-n", required=True, envvar="NW_RULE_NAME", help="Network rule name")
+@click.option("--db", required=True, envvar="NW_RULE_DB", help="Database name")
+@click.option("--schema", "-s", default="NETWORKS", envvar="NW_RULE_SCHEMA", help="Schema name")
+@click.option("--values", help="Comma-separated values (CIDRs, hosts) to replace existing")
+@click.option(
+    "--allow-local/--no-local",
+    default=True,
+    help="Include local IP (IPV4 only, default: ON)",
+)
+@click.option("--allow-gh", "-G", is_flag=True, help="Include GitHub Actions IPs (IPV4 only)")
+@click.option("--allow-google", "-g", is_flag=True, help="Include Google IPs (IPV4 only)")
+@click.option("--dry-run", is_flag=True, help="Preview SQL without executing")
+def rule_update_cmd(
+    name: str,
+    db: str,
+    schema: str,
+    values: str | None,
+    allow_local: bool,
+    allow_gh: bool,
+    allow_google: bool,
+    dry_run: bool,
+) -> None:
+    """
+    Update (replace) values in an existing network rule.
+
+    This replaces ALL values in the rule. To add values, first list
+    existing values with DESCRIBE NETWORK RULE, then include them.
+
+    \b
+    Examples:
+        # Update with new local IP (e.g., after IP change)
+        network.py rule update --name my_rule --db my_db
+
+        # Replace with GitHub Actions IPs
+        network.py rule update --name ci_rule --db my_db --allow-gh --no-local
+
+        # Replace with specific CIDRs
+        network.py rule update --name my_rule --db my_db --values "10.0.0.0/8,192.168.1.0/24" --no-local
+    """
+    extra = [v.strip() for v in values.split(",")] if values else None
+    all_values = collect_ipv4_cidrs(allow_local, allow_gh, allow_google, extra)
+
+    if not all_values:
+        raise click.ClickException(
+            "No values specified. Use --allow-local, --allow-gh, --allow-google, or --values"
+        )
+
+    fqn = f"{db}.{schema}.{name}".upper()
+    click.echo(f"Updating network rule {fqn} with {len(all_values)} value(s)...")
+
+    update_network_rule(
+        name.upper(),
+        db.upper(),
+        schema.upper(),
+        all_values,
+        dry_run=dry_run,
+    )
+
+    if not dry_run:
+        click.echo(f"✓ Updated rule: {fqn}")
 
 
 @rule.command(name="delete")
