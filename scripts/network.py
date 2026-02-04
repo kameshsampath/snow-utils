@@ -58,12 +58,11 @@ def get_network_rule_sql(
         comment: Optional comment
 
     Returns:
-        CREATE OR REPLACE NETWORK RULE SQL statement
+        CREATE OR REPLACE NETWORK RULE SQL statement (idempotent)
     """
     value_list = ", ".join(f"'{v}'" for v in values)
     comment_text = comment or "Created by snow-utils"
-    create_stmt = "CREATE OR REPLACE" if force else "CREATE"
-    return f"""{create_stmt} NETWORK RULE {db}.{schema}.{name}
+    return f"""CREATE OR REPLACE NETWORK RULE {db}.{schema}.{name}
     MODE = {mode.value}
     TYPE = {rule_type.value}
     VALUE_LIST = ({value_list})
@@ -85,12 +84,11 @@ def get_network_policy_sql(
         comment: Optional comment
 
     Returns:
-        CREATE OR REPLACE NETWORK POLICY SQL statement
+        CREATE NETWORK POLICY IF NOT EXISTS SQL statement (idempotent)
     """
     rule_list = ", ".join(rule_refs)
     comment_text = comment or "Created by snow-utils"
-    create_stmt = "CREATE OR REPLACE" if force else "CREATE"
-    return f"""{create_stmt} NETWORK POLICY {policy_name}
+    return f"""CREATE NETWORK POLICY IF NOT EXISTS {policy_name}
     ALLOWED_NETWORK_RULE_LIST = ({rule_list})
     COMMENT = '{comment_text}';"""
 
