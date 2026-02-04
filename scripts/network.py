@@ -840,7 +840,9 @@ def rule_list_cmd(db: str, schema: str, admin_role: str) -> None:
 )
 @click.option("--dry-run", is_flag=True, help="Preview SQL without executing")
 @click.option("--force", "-f", is_flag=True, help="Overwrite existing policy (CREATE OR REPLACE)")
-@click.option("-o", "--output", type=click.Choice(["text", "json"]), default="text", help="Output format")
+@click.option(
+    "-o", "--output", type=click.Choice(["text", "json"]), default="text", help="Output format"
+)
 def policy_create_cmd(name: str, rules: str, dry_run: bool, force: bool, output: str) -> None:
     """
     Create a network policy with specified rules.
@@ -877,7 +879,9 @@ def policy_create_cmd(name: str, rules: str, dry_run: bool, force: bool, output:
     help="Comma-separated fully qualified rule names (db.schema.rule)",
 )
 @click.option("--dry-run", is_flag=True, help="Preview SQL without executing")
-@click.option("-o", "--output", type=click.Choice(["text", "json"]), default="text", help="Output format")
+@click.option(
+    "-o", "--output", type=click.Choice(["text", "json"]), default="text", help="Output format"
+)
 def policy_alter_cmd(name: str, rules: str, dry_run: bool, output: str) -> None:
     """
     Add rules to an existing network policy.
