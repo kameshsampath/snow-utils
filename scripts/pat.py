@@ -439,6 +439,11 @@ def cli(ctx: click.Context, verbose: bool, debug: bool, comment: str | None) -> 
     default="text",
     help="Output format",
 )
+@click.option(
+    "--skip-network",
+    is_flag=True,
+    help="Skip network rule/policy creation (use when delegating to snow-utils-networks skill)",
+)
 @click.pass_context
 def create_command(
     ctx: click.Context,
@@ -459,17 +464,18 @@ def create_command(
     admin_role: str,
     force: bool,
     output: str,
+    skip_network: bool,
 ) -> None:
     """
     Create or rotate a PAT for a service user.
 
     Network policy is REQUIRED for PAT security (Snowflake best practice).
-    By default, includes local IP. Use --allow-gh/--allow-google for CI/CD access.
+    Use --skip-network if network resources were created by snow-utils-networks skill.
 
     \b
     Steps:
     1. Create service user (if not exists)
-    2. Create network rule and policy (REQUIRED)
+    2. Create network rule and policy (unless --skip-network)
     3. Create authentication policy
     4. Create or rotate PAT
     5. Update .env file
@@ -480,26 +486,28 @@ def create_command(
         # Basic usage - local IP only (most secure)
         pat.py create --user my_sa --role demo_role --db my_db
 
+        # Skip network (created by snow-utils-networks skill)
+        pat.py create --user my_sa --role demo_role --db my_db --skip-network
+
         # Include GitHub Actions IPs for CI/CD
         pat.py create --user ci_sa --role ci_role --db my_db --allow-gh
-
-        # Multiple IP sources
-        pat.py create --user my_sa --role demo_role --db my_db --allow-gh --allow-google
     """
     if not pat_name:
         pat_name = f"{user}_pat".upper()
 
-    cidrs = collect_ipv4_cidrs(
-        with_local=allow_local,
-        with_gh=allow_gh,
-        with_google=allow_google,
-        extra_cidrs=list(extra_cidrs) if extra_cidrs else None,
-    )
-    if not cidrs:
-        raise click.ClickException(
-            "Network policy required for PAT security. "
-            "Use --allow-local (default), --allow-gh, --allow-google, or --extra-cidrs"
+    cidrs: list[str] = []
+    if not skip_network:
+        cidrs = collect_ipv4_cidrs(
+            with_local=allow_local,
+            with_gh=allow_gh,
+            with_google=allow_google,
+            extra_cidrs=list(extra_cidrs) if extra_cidrs else None,
         )
+        if not cidrs:
+            raise click.ClickException(
+                "Network policy required for PAT security. "
+                "Use --allow-local (default), --allow-gh, --allow-google, or --extra-cidrs"
+            )
 
     comment_prefix = ctx.obj.get("comment") or infer_comment_prefix(user)
 
@@ -513,11 +521,13 @@ def create_command(
             "comment_prefix": comment_prefix,
             "resources": {
                 "auth_policy": f"{db}.POLICIES.{user}_AUTH_POLICY".upper(),
-                "network_rule": f"{db}.NETWORKS.{user}_NETWORK_RULE".upper(),
-                "network_policy": f"{user}_NETWORK_POLICY".upper(),
             },
-            "cidrs_count": len(cidrs),
+            "skip_network": skip_network,
         }
+        if not skip_network:
+            result["resources"]["network_rule"] = f"{db}.NETWORKS.{user}_NETWORK_RULE".upper()
+            result["resources"]["network_policy"] = f"{user}_NETWORK_POLICY".upper()
+            result["cidrs_count"] = len(cidrs)
         if token:
             result["token"] = token
         return result
@@ -538,7 +548,10 @@ def create_command(
         click.echo(f"Role:     {role}")
         click.echo(f"Database: {db}")
         click.echo(f"PAT Name: {pat_name}")
-        click.echo(f"CIDRs:    {len(cidrs)} entries")
+        if not skip_network:
+            click.echo(f"CIDRs:    {len(cidrs)} entries")
+        else:
+            click.echo("Network:  (skipped - delegated to snow-utils-networks)")
         click.echo()
 
     if dry_run:
@@ -548,19 +561,24 @@ def create_command(
         click.echo("-- Step 1: Create service user")
         click.echo(get_service_user_sql(user, role, comment_prefix, admin_role))
         click.echo()
-        click.echo("-- Step 2: Create network rule and policy")
-        click.echo(
-            get_setup_network_for_user_sql(
-                user=user,
-                db=db,
-                cidrs=cidrs,
-                force=force,
-                comment_prefix=comment_prefix,
-                admin_role=admin_role,
+        if not skip_network:
+            click.echo("-- Step 2: Create network rule and policy")
+            click.echo(
+                get_setup_network_for_user_sql(
+                    user=user,
+                    db=db,
+                    cidrs=cidrs,
+                    force=force,
+                    comment_prefix=comment_prefix,
+                    admin_role=admin_role,
+                )
             )
-        )
-        click.echo()
-        click.echo("-- Step 3: Create authentication policy")
+            click.echo()
+            click.echo("-- Step 3: Create authentication policy")
+        else:
+            click.echo("-- Step 2: (Network skipped - use snow-utils-networks skill)")
+            click.echo()
+            click.echo("-- Step 3: Create authentication policy")
         click.echo(
             get_auth_policy_sql(
                 user, db, default_expiry_days, max_expiry_days, comment_prefix, admin_role
@@ -581,19 +599,22 @@ def create_command(
         user=user, pat_role=role, comment_prefix=comment_prefix, admin_role=admin_role
     )
 
-    click.echo(f"Setting up network rule and policy ({len(cidrs)} CIDRs)...")
-    rule_fqn, policy_name = setup_network_for_user(
-        user=user,
-        db=db,
-        cidrs=cidrs,
-        force=force,
-        comment_prefix=comment_prefix,
-        admin_role=admin_role,
-    )
-    click.echo(f"✓ Network rule: {rule_fqn}")
-    click.echo(f"✓ Network policy: {policy_name}")
-    assign_network_policy_to_user(user, policy_name, admin_role=admin_role)
-    click.echo(f"✓ Assigned network policy to user {user}")
+    if not skip_network:
+        click.echo(f"Setting up network rule and policy ({len(cidrs)} CIDRs)...")
+        rule_fqn, policy_name = setup_network_for_user(
+            user=user,
+            db=db,
+            cidrs=cidrs,
+            force=force,
+            comment_prefix=comment_prefix,
+            admin_role=admin_role,
+        )
+        click.echo(f"✓ Network rule: {rule_fqn}")
+        click.echo(f"✓ Network policy: {policy_name}")
+        assign_network_policy_to_user(user, policy_name, admin_role=admin_role)
+        click.echo(f"✓ Assigned network policy to user {user}")
+    else:
+        click.echo("Network setup skipped (delegated to snow-utils-networks skill)")
 
     setup_auth_policy(
         user=user,
