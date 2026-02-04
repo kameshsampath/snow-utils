@@ -136,9 +136,9 @@ CREATE SCHEMA IF NOT EXISTS {db}.POLICIES;
 CREATE OR ALTER AUTHENTICATION POLICY {db}.POLICIES.{auth_policy_name}
     AUTHENTICATION_METHODS = ('PROGRAMMATIC_ACCESS_TOKEN')
     PAT_POLICY = (
-        default_expiry_in_days = {default_expiry_days},
-        max_expiry_in_days = {max_expiry_days},
-        network_policy_evaluation = ENFORCED_REQUIRED
+        DEFAULT_EXPIRY_IN_DAYS = {default_expiry_days}
+        MAX_EXPIRY_IN_DAYS = {max_expiry_days}
+        NETWORK_POLICY_EVALUATION = ENFORCED_REQUIRED
     )
     COMMENT = '{comment}';
 

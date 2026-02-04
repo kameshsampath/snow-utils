@@ -337,9 +337,16 @@ def list_network_policies(admin_role: str = "accountadmin") -> list[dict]:
 
 
 def network_policy_exists(policy_name: str, admin_role: str = "accountadmin") -> bool:
-    """Check if a network policy exists."""
-    policies = list_network_policies(admin_role=admin_role)
-    return any(p.get("name", "").upper() == policy_name.upper() for p in policies)
+    """Check if a network policy exists by trying to describe it directly.
+
+    Uses exact name lookup instead of listing all policies to avoid
+    privilege errors on policies we don't own.
+    """
+    try:
+        result = run_snow_sql(f"DESC NETWORK POLICY {policy_name}", role=admin_role)
+        return result is not None and len(result) > 0
+    except Exception:
+        return False
 
 
 def get_policies_for_rule(
