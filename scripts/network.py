@@ -967,5 +967,24 @@ def policy_list_cmd(admin_role: str) -> None:
         click.echo(f"  {name}")
 
 
+@policy.command(name="assign")
+@click.option("--name", "-n", required=True, help="Network policy name")
+@click.option("--user", "-u", required=True, help="User to assign policy to")
+@click.option(
+    "--admin-role",
+    "-a",
+    envvar="SA_ADMIN_ROLE",
+    default="accountadmin",
+    help="Admin role for assignment",
+)
+def policy_assign_cmd(name: str, user: str, admin_role: str) -> None:
+    """Assign a network policy to a user."""
+    policy_upper = name.upper()
+    user_upper = user.upper()
+    click.echo(f"Assigning policy {policy_upper} to user {user_upper}...")
+    assign_network_policy_to_user(user_upper, policy_upper, admin_role=admin_role)
+    click.echo(f"✓ Assigned {policy_upper} to {user_upper}")
+
+
 if __name__ == "__main__":
     cli()
