@@ -572,6 +572,11 @@ def create_command(
         click.echo("─" * 60)
         return
 
+    if output == "text":
+        if not click.confirm("\nProceed with resource creation?", default=True):
+            click.echo("Aborted.")
+            return
+
     setup_service_user(
         user=user, pat_role=role, comment_prefix=comment_prefix, admin_role=admin_role
     )

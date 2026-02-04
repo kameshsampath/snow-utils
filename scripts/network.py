@@ -150,15 +150,28 @@ def create_network_rule(
             f"Invalid type '{rule_type.value}' for mode '{mode.value}'. Valid types: {valid}"
         )
 
+    rule_fqn = f"{db}.{schema}.{name}"
     sql = get_network_rule_sql(name, db, schema, values, mode, rule_type, comment, force)
 
     if dry_run:
         click.echo(sql)
     else:
+        attached_policies = get_policies_for_rule(rule_fqn, admin_role=admin_role)
+
+        if attached_policies:
+            click.echo(f"  Detaching rule from {len(attached_policies)} policy(ies)...")
+            for policy in attached_policies:
+                detach_rule_from_policy(policy, admin_role=admin_role)
+
         setup_sql = f"USE ROLE {admin_role};\nCREATE DATABASE IF NOT EXISTS {db};\nCREATE SCHEMA IF NOT EXISTS {db}.{schema};\n"
         run_snow_sql_stdin(setup_sql + sql)
 
-    return f"{db}.{schema}.{name}"
+        if attached_policies:
+            click.echo(f"  Re-attaching rule to {len(attached_policies)} policy(ies)...")
+            for policy in attached_policies:
+                reattach_rule_to_policy(policy, rule_fqn, admin_role=admin_role)
+
+    return rule_fqn
 
 
 def create_network_policy(
@@ -326,6 +339,41 @@ def network_policy_exists(policy_name: str, admin_role: str = "accountadmin") ->
     """Check if a network policy exists."""
     policies = list_network_policies(admin_role=admin_role)
     return any(p.get("name", "").upper() == policy_name.upper() for p in policies)
+
+
+def get_policies_for_rule(rule_fqn: str, admin_role: str = "accountadmin") -> list[str]:
+    """Find all network policies that reference a given network rule.
+
+    Returns list of policy names that have this rule in their ALLOWED_NETWORK_RULE_LIST.
+    """
+    policies = list_network_policies(admin_role=admin_role)
+    result = []
+    for p in policies:
+        allowed_rules = p.get("entries_in_allowed_network_rules", 0)
+        if allowed_rules > 0:
+            policy_name = p.get("name", "")
+            desc = run_snow_sql(f"DESC NETWORK POLICY {policy_name}", role=admin_role) or []
+            for row in desc:
+                if row.get("name") == "ALLOWED_NETWORK_RULE_LIST":
+                    rules_str = row.get("value", "")
+                    if rule_fqn.upper() in rules_str.upper():
+                        result.append(policy_name)
+                        break
+    return result
+
+
+def detach_rule_from_policy(policy_name: str, admin_role: str = "accountadmin") -> None:
+    """Temporarily detach all rules from a policy (SET to empty list)."""
+    sql = f"USE ROLE {admin_role};\nALTER NETWORK POLICY IF EXISTS {policy_name} SET ALLOWED_NETWORK_RULE_LIST = ();"
+    run_snow_sql_stdin(sql)
+
+
+def reattach_rule_to_policy(
+    policy_name: str, rule_fqn: str, admin_role: str = "accountadmin"
+) -> None:
+    """Re-attach a rule to a policy."""
+    sql = f"USE ROLE {admin_role};\nALTER NETWORK POLICY IF EXISTS {policy_name} SET ALLOWED_NETWORK_RULE_LIST = ('{rule_fqn}');"
+    run_snow_sql_stdin(sql)
 
 
 def get_setup_network_for_user_sql(
@@ -571,6 +619,9 @@ def policy() -> None:
     default="create",
     help="Policy mode: 'create' (replace) or 'alter' (add to existing)",
 )
+@click.option(
+    "-o", "--output", type=click.Choice(["text", "json"]), default="text", help="Output format"
+)
 def rule_create(
     name: str,
     db: str,
@@ -585,6 +636,7 @@ def rule_create(
     force: bool,
     policy_name: str | None,
     policy_mode: str,
+    output: str,
 ) -> None:
     """
     Create a network rule with presets and/or custom values.
@@ -639,6 +691,14 @@ def rule_create(
         f"Creating {mode.upper()} network rule ({rule_type.upper()}) "
         f"with {len(all_values)} value(s)..."
     )
+
+    if dry_run:
+        click.echo("SQL that would be executed:")
+        click.echo("─" * 60)
+    elif output == "text":
+        if not click.confirm("\nProceed with network rule creation?", default=True):
+            click.echo("Aborted.")
+            return
 
     fqn = create_network_rule(
         name.upper(),
@@ -780,7 +840,8 @@ def rule_list_cmd(db: str, schema: str, admin_role: str) -> None:
 )
 @click.option("--dry-run", is_flag=True, help="Preview SQL without executing")
 @click.option("--force", "-f", is_flag=True, help="Overwrite existing policy (CREATE OR REPLACE)")
-def policy_create_cmd(name: str, rules: str, dry_run: bool, force: bool) -> None:
+@click.option("-o", "--output", type=click.Choice(["text", "json"]), default="text", help="Output format")
+def policy_create_cmd(name: str, rules: str, dry_run: bool, force: bool, output: str) -> None:
     """
     Create a network policy with specified rules.
 
@@ -793,6 +854,15 @@ def policy_create_cmd(name: str, rules: str, dry_run: bool, force: bool) -> None
     policy_name = name.upper()
 
     click.echo(f"Creating policy {policy_name} with {len(rule_refs)} rule(s)...")
+
+    if dry_run:
+        click.echo("SQL that would be executed:")
+        click.echo("─" * 60)
+    elif output == "text":
+        if not click.confirm("\nProceed with network policy creation?", default=True):
+            click.echo("Aborted.")
+            return
+
     create_network_policy(policy_name, rule_refs, dry_run=dry_run, force=force)
     if not dry_run:
         click.echo(f"✓ Created: {policy_name}")
@@ -807,7 +877,8 @@ def policy_create_cmd(name: str, rules: str, dry_run: bool, force: bool) -> None
     help="Comma-separated fully qualified rule names (db.schema.rule)",
 )
 @click.option("--dry-run", is_flag=True, help="Preview SQL without executing")
-def policy_alter_cmd(name: str, rules: str, dry_run: bool) -> None:
+@click.option("-o", "--output", type=click.Choice(["text", "json"]), default="text", help="Output format")
+def policy_alter_cmd(name: str, rules: str, dry_run: bool, output: str) -> None:
     """
     Add rules to an existing network policy.
 
@@ -820,6 +891,15 @@ def policy_alter_cmd(name: str, rules: str, dry_run: bool) -> None:
     policy_name = name.upper()
 
     click.echo(f"Adding {len(rule_refs)} rule(s) to policy: {policy_name}")
+
+    if dry_run:
+        click.echo("SQL that would be executed:")
+        click.echo("─" * 60)
+    elif output == "text":
+        if not click.confirm("\nProceed with policy modification?", default=True):
+            click.echo("Aborted.")
+            return
+
     alter_network_policy(policy_name, rule_refs, dry_run=dry_run)
     if not dry_run:
         click.echo(f"✓ Updated: {policy_name}")
