@@ -824,7 +824,7 @@ def rule_delete_cmd(name: str, db: str, schema: str) -> None:
 @click.option(
     "--admin-role",
     "-a",
-    envvar="SA_ADMIN_ROLE",
+    envvar="NW_ADMIN_ROLE",
     default="accountadmin",
     help="Admin role for listing resources",
 )
@@ -929,7 +929,7 @@ def policy_alter_cmd(name: str, rules: str, dry_run: bool, output: str) -> None:
 @click.option(
     "--admin-role",
     "-a",
-    envvar="SA_ADMIN_ROLE",
+    envvar="NW_ADMIN_ROLE",
     default="accountadmin",
     help="Admin role for modifying resources",
 )
@@ -973,7 +973,7 @@ def policy_list_cmd(admin_role: str) -> None:
 @click.option(
     "--admin-role",
     "-a",
-    envvar="SA_ADMIN_ROLE",
+    envvar="NW_ADMIN_ROLE",
     default="accountadmin",
     help="Admin role for assignment",
 )
