@@ -156,7 +156,8 @@ def create_network_rule(
     if dry_run:
         click.echo(sql)
     else:
-        attached_policies = get_policies_for_rule(rule_fqn, admin_role=admin_role)
+        expected_policy = name.replace("_NETWORK_RULE", "_NETWORK_POLICY")
+        attached_policies = get_policies_for_rule(rule_fqn, expected_policy, admin_role=admin_role)
 
         if attached_policies:
             click.echo(f"  Detaching rule from {len(attached_policies)} policy(ies)...")
@@ -341,24 +342,30 @@ def network_policy_exists(policy_name: str, admin_role: str = "accountadmin") ->
     return any(p.get("name", "").upper() == policy_name.upper() for p in policies)
 
 
-def get_policies_for_rule(rule_fqn: str, admin_role: str = "accountadmin") -> list[str]:
-    """Find all network policies that reference a given network rule.
+def get_policies_for_rule(
+    rule_fqn: str, expected_policy_name: str, admin_role: str = "accountadmin"
+) -> list[str]:
+    """Check if the expected policy contains this network rule.
 
-    Returns list of policy names that have this rule in their ALLOWED_NETWORK_RULE_LIST.
+    Args:
+        rule_fqn: Fully qualified rule name (db.schema.rule)
+        expected_policy_name: The specific policy name to check
+        admin_role: Role for queries
+
+    Returns:
+        List containing expected_policy_name if it references the rule, empty otherwise.
     """
-    policies = list_network_policies(admin_role=admin_role)
     result = []
-    for p in policies:
-        allowed_rules = p.get("entries_in_allowed_network_rules", 0)
-        if allowed_rules > 0:
-            policy_name = p.get("name", "")
-            desc = run_snow_sql(f"DESC NETWORK POLICY {policy_name}", role=admin_role) or []
-            for row in desc:
-                if row.get("name") == "ALLOWED_NETWORK_RULE_LIST":
-                    rules_str = row.get("value", "")
-                    if rule_fqn.upper() in rules_str.upper():
-                        result.append(policy_name)
-                        break
+    try:
+        desc = run_snow_sql(f"DESC NETWORK POLICY {expected_policy_name}", role=admin_role) or []
+        for row in desc:
+            if row.get("name") == "ALLOWED_NETWORK_RULE_LIST":
+                rules_str = row.get("value", "")
+                if rule_fqn.upper() in rules_str.upper():
+                    result.append(expected_policy_name)
+                    break
+    except Exception:
+        pass
     return result
 
 
