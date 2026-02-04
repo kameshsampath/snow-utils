@@ -79,15 +79,16 @@ def infer_comment_prefix(user: str) -> str:
 
 
 def format_comment(comment_prefix: str, suffix: str = "") -> str:
-    """Format comment as 'Used by USER's PROJECT app - managed by snow-utils-pat'.
+    """Format comment as 'Used by USER - PROJECT app - managed by snow-utils-pat'.
 
     Parses comment_prefix (e.g., KAMESHS_PAT_DEMO) into user + project parts.
     If no underscore found, uses the whole prefix as project name.
+    Avoids possessives ('s) to prevent SQL quoting issues.
     """
     parts = comment_prefix.split("_", 1)
     if len(parts) == 2:
         user_part, project_part = parts
-        return f"Used by {user_part}'s {project_part} app{suffix} - managed by snow-utils-pat"
+        return f"Used by {user_part} - {project_part} app{suffix} - managed by snow-utils-pat"
     return f"Used by {comment_prefix} app{suffix} - managed by snow-utils-pat"
 
 
