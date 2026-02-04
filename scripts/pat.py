@@ -742,7 +742,9 @@ def remove_command(
 @cli.command(name="rotate")
 @click.option("--user", "-u", required=True, envvar="SA_USER", help="Service account user name")
 @click.option("--role", "-r", required=True, envvar="SA_ROLE", help="Role restriction for the PAT")
-@click.option("--pat-name", envvar="PAT_NAME", help="Name for the PAT token (defaults to {USER}_PAT)")
+@click.option(
+    "--pat-name", envvar="PAT_NAME", help="Name for the PAT token (defaults to {USER}_PAT)"
+)
 @click.option(
     "--admin-role",
     "-a",
