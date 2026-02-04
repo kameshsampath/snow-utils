@@ -79,8 +79,13 @@ def infer_comment_prefix(user: str) -> str:
 
 
 def get_service_user_sql(user: str, pat_role: str, comment_prefix: str) -> str:
-    """Generate SQL for creating service user (idempotent)."""
+    """Generate SQL for creating service user and role (idempotent)."""
     return f"""USE ROLE accountadmin;
+-- Create PAT role if not exists
+CREATE ROLE IF NOT EXISTS {pat_role}
+    COMMENT = '{comment_prefix} PAT access role - managed by snow-utils-pat';
+GRANT ROLE {pat_role} TO ROLE SYSADMIN;
+-- Create service user
 CREATE USER IF NOT EXISTS {user}
     TYPE = SERVICE
     COMMENT = '{comment_prefix} service account - managed by snow-utils-pat';
@@ -88,11 +93,11 @@ GRANT ROLE {pat_role} TO USER {user};"""
 
 
 def setup_service_user(user: str, pat_role: str, comment_prefix: str) -> None:
-    """Create service user and grant the PAT role (idempotent)."""
-    click.echo(f"Setting up service user: {user}")
+    """Create PAT role (if needed) and service user, then grant role (idempotent)."""
+    click.echo(f"Setting up PAT role and service user: {user}")
     sql = get_service_user_sql(user, pat_role, comment_prefix)
     run_snow_sql_stdin(sql)
-    click.echo(f"✓ Service user {user} configured with role {pat_role}")
+    click.echo(f"✓ Role {pat_role} and service user {user} configured")
 
 
 def get_auth_policy_sql(
