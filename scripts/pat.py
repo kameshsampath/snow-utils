@@ -78,17 +78,31 @@ def infer_comment_prefix(user: str) -> str:
     return upper_user
 
 
+def format_comment(comment_prefix: str, suffix: str = "") -> str:
+    """Format comment as 'Used by USER's PROJECT app - managed by snow-utils-pat'.
+
+    Parses comment_prefix (e.g., KAMESHS_PAT_DEMO) into user + project parts.
+    If no underscore found, uses the whole prefix as project name.
+    """
+    parts = comment_prefix.split("_", 1)
+    if len(parts) == 2:
+        user_part, project_part = parts
+        return f"Used by {user_part}'s {project_part} app{suffix} - managed by snow-utils-pat"
+    return f"Used by {comment_prefix} app{suffix} - managed by snow-utils-pat"
+
+
 def get_service_user_sql(user: str, pat_role: str, comment_prefix: str) -> str:
     """Generate SQL for creating service user and role (idempotent)."""
+    comment = format_comment(comment_prefix)
     return f"""USE ROLE accountadmin;
 -- Create PAT role if not exists
 CREATE ROLE IF NOT EXISTS {pat_role}
-    COMMENT = '{comment_prefix} PAT access role - managed by snow-utils-pat';
+    COMMENT = '{comment}';
 GRANT ROLE {pat_role} TO ROLE SYSADMIN;
 -- Create service user
 CREATE USER IF NOT EXISTS {user}
     TYPE = SERVICE
-    COMMENT = '{comment_prefix} service account - managed by snow-utils-pat';
+    COMMENT = '{comment}';
 GRANT ROLE {pat_role} TO USER {user};"""
 
 
@@ -105,6 +119,7 @@ def get_auth_policy_sql(
 ) -> str:
     """Generate SQL for creating authentication policy (idempotent)."""
     auth_policy_name = f"{user}_auth_policy".upper()
+    comment = format_comment(comment_prefix)
 
     return f"""CREATE SCHEMA IF NOT EXISTS {db}.POLICIES;
 CREATE OR ALTER AUTHENTICATION POLICY {db}.POLICIES.{auth_policy_name}
@@ -114,7 +129,7 @@ CREATE OR ALTER AUTHENTICATION POLICY {db}.POLICIES.{auth_policy_name}
         max_expiry_in_days = {max_expiry_days},
         network_policy_evaluation = ENFORCED_REQUIRED
     )
-    COMMENT = '{comment_prefix} PAT auth policy - managed by snow-utils-pat';
+    COMMENT = '{comment}';
 
 ALTER USER {user} SET AUTHENTICATION POLICY {db}.POLICIES.{auth_policy_name};"""
 
