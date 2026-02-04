@@ -92,10 +92,12 @@ def format_comment(comment_prefix: str, suffix: str = "") -> str:
     return f"Used by {comment_prefix} app{suffix} - managed by snow-utils-pat"
 
 
-def get_service_user_sql(user: str, pat_role: str, comment_prefix: str) -> str:
+def get_service_user_sql(
+    user: str, pat_role: str, comment_prefix: str, admin_role: str = "accountadmin"
+) -> str:
     """Generate SQL for creating service user and role (idempotent)."""
     comment = format_comment(comment_prefix)
-    return f"""USE ROLE accountadmin;
+    return f"""USE ROLE {admin_role};
 -- Create PAT role if not exists
 CREATE ROLE IF NOT EXISTS {pat_role}
     COMMENT = '{comment}';
@@ -107,22 +109,30 @@ CREATE USER IF NOT EXISTS {user}
 GRANT ROLE {pat_role} TO USER {user};"""
 
 
-def setup_service_user(user: str, pat_role: str, comment_prefix: str) -> None:
+def setup_service_user(
+    user: str, pat_role: str, comment_prefix: str, admin_role: str = "accountadmin"
+) -> None:
     """Create PAT role (if needed) and service user, then grant role (idempotent)."""
-    click.echo(f"Setting up PAT role and service user: {user}")
-    sql = get_service_user_sql(user, pat_role, comment_prefix)
+    click.echo(f"Setting up PAT role {pat_role} and service user {user}")
+    sql = get_service_user_sql(user, pat_role, comment_prefix, admin_role)
     run_snow_sql_stdin(sql)
     click.echo(f"✓ Role {pat_role} and service user {user} configured")
 
 
 def get_auth_policy_sql(
-    user: str, db: str, default_expiry_days: int, max_expiry_days: int, comment_prefix: str
+    user: str,
+    db: str,
+    default_expiry_days: int,
+    max_expiry_days: int,
+    comment_prefix: str,
+    admin_role: str = "accountadmin",
 ) -> str:
     """Generate SQL for creating authentication policy (idempotent)."""
     auth_policy_name = f"{user}_auth_policy".upper()
     comment = format_comment(comment_prefix)
 
-    return f"""CREATE SCHEMA IF NOT EXISTS {db}.POLICIES;
+    return f"""USE ROLE {admin_role};
+CREATE SCHEMA IF NOT EXISTS {db}.POLICIES;
 CREATE OR ALTER AUTHENTICATION POLICY {db}.POLICIES.{auth_policy_name}
     AUTHENTICATION_METHODS = ('PROGRAMMATIC_ACCESS_TOKEN')
     PAT_POLICY = (
@@ -136,23 +146,30 @@ ALTER USER {user} SET AUTHENTICATION POLICY {db}.POLICIES.{auth_policy_name};"""
 
 
 def setup_auth_policy(
-    user: str, db: str, default_expiry_days: int, max_expiry_days: int, comment_prefix: str
+    user: str,
+    db: str,
+    default_expiry_days: int,
+    max_expiry_days: int,
+    comment_prefix: str,
+    admin_role: str = "accountadmin",
 ) -> None:
     """Create authentication policy for PAT access (idempotent)."""
     click.echo("Setting up authentication policy...")
-    sql = get_auth_policy_sql(user, db, default_expiry_days, max_expiry_days, comment_prefix)
+    sql = get_auth_policy_sql(
+        user, db, default_expiry_days, max_expiry_days, comment_prefix, admin_role
+    )
     run_snow_sql_stdin(sql)
     click.echo("✓ Authentication policy configured")
 
 
-def remove_auth_policy(user: str, db: str) -> None:
+def remove_auth_policy(user: str, db: str, admin_role: str = "accountadmin") -> None:
     """Remove authentication policy for a user (idempotent)."""
     auth_policy_name = f"{user}_auth_policy".upper()
 
     click.echo(f"Removing authentication policy: {db}.POLICIES.{auth_policy_name}")
 
     sql = f"""
-        USE ROLE accountadmin;
+        USE ROLE {admin_role};
         ALTER USER IF EXISTS {user} UNSET AUTHENTICATION POLICY;
         DROP AUTHENTICATION POLICY IF EXISTS {db}.POLICIES.{auth_policy_name};
     """
@@ -160,9 +177,9 @@ def remove_auth_policy(user: str, db: str) -> None:
     click.echo("✓ Authentication policy removed")
 
 
-def get_existing_pat(user: str, pat_name: str) -> str | None:
+def get_existing_pat(user: str, pat_name: str, admin_role: str = "accountadmin") -> str | None:
     """Check if a PAT with the given name exists for the user."""
-    result = run_snow_sql(f"SHOW USER PATS FOR USER {user}")
+    result = run_snow_sql(f"SHOW USER PATS FOR USER {user}", role=admin_role)
 
     if not result:
         return None
@@ -179,14 +196,15 @@ def get_pat_sql(user: str, pat_role: str, pat_name: str) -> str:
     return f"ALTER USER IF EXISTS {user} ADD PAT {pat_name} ROLE_RESTRICTION = {pat_role};"
 
 
-def create_or_rotate_pat(user: str, pat_role: str, pat_name: str, rotate: bool = False) -> str:
+def create_or_rotate_pat(
+    user: str, pat_role: str, pat_name: str, rotate: bool = False, admin_role: str = "accountadmin"
+) -> str:
     """Create a new PAT or rotate an existing one (idempotent for rotate=True)."""
-    existing = get_existing_pat(user, pat_name)
+    existing = get_existing_pat(user, pat_name, admin_role=admin_role)
 
     if existing and not rotate:
         click.echo(f"PAT '{pat_name}' exists. Removing and recreating (--no-rotate)...")
-        remove_query = f"ALTER USER IF EXISTS {user} REMOVE PAT {pat_name}"
-        run_snow_sql(remove_query)
+        run_snow_sql(f"ALTER USER IF EXISTS {user} REMOVE PAT {pat_name}", role=admin_role)
         click.echo(f"✓ Removed existing PAT '{pat_name}'")
         existing = None
 
@@ -197,7 +215,7 @@ def create_or_rotate_pat(user: str, pat_role: str, pat_name: str, rotate: bool =
         click.echo(f"Creating new PAT for service user {user} with role restriction {pat_role}...")
         query = f"ALTER USER IF EXISTS {user} ADD PAT {pat_name} ROLE_RESTRICTION = {pat_role}"
 
-    result = run_snow_sql(query)
+    result = run_snow_sql(query, role=admin_role)
 
     if not result or not result[0].get("token_secret"):
         raise click.ClickException("Failed to get PAT token from response")
@@ -207,26 +225,25 @@ def create_or_rotate_pat(user: str, pat_role: str, pat_name: str, rotate: bool =
     return token
 
 
-def remove_pat(user: str, pat_name: str) -> None:
+def remove_pat(user: str, pat_name: str, admin_role: str = "accountadmin") -> None:
     """Remove a PAT from a user (idempotent)."""
     click.echo(f"Removing PAT '{pat_name}' from user {user}...")
 
-    existing = get_existing_pat(user, pat_name)
+    existing = get_existing_pat(user, pat_name, admin_role=admin_role)
     if not existing:
         click.echo(f"⚠ PAT '{pat_name}' not found for user {user}")
         return
 
-    sql = f"ALTER USER IF EXISTS {user} REMOVE PAT {pat_name}"
-    run_snow_sql(sql)
+    run_snow_sql(f"ALTER USER IF EXISTS {user} REMOVE PAT {pat_name}", role=admin_role)
     click.echo(f"✓ Removed PAT '{pat_name}'")
 
 
-def remove_service_user(user: str) -> None:
+def remove_service_user(user: str, admin_role: str = "accountadmin") -> None:
     """Drop the service user (idempotent)."""
     click.echo(f"Dropping service user: {user}")
 
     sql = f"""
-        USE ROLE accountadmin;
+        USE ROLE {admin_role};
         DROP USER IF EXISTS {user};
     """
     run_snow_sql_stdin(sql)
@@ -403,6 +420,13 @@ def cli(ctx: click.Context, verbose: bool, debug: bool, comment: str | None) -> 
 )
 @click.option("--dry-run", is_flag=True, help="Preview without making changes")
 @click.option(
+    "--admin-role",
+    "-a",
+    envvar="SA_ADMIN_ROLE",
+    default="accountadmin",
+    help="Admin role for creating resources (default: ACCOUNTADMIN)",
+)
+@click.option(
     "--force",
     "-f",
     is_flag=True,
@@ -432,6 +456,7 @@ def create_command(
     default_expiry_days: int,
     max_expiry_days: int,
     dry_run: bool,
+    admin_role: str,
     force: bool,
     output: str,
 ) -> None:
@@ -521,18 +546,25 @@ def create_command(
         click.echo("SQL that would be executed:")
         click.echo("─" * 60)
         click.echo("-- Step 1: Create service user")
-        click.echo(get_service_user_sql(user, role, comment_prefix))
+        click.echo(get_service_user_sql(user, role, comment_prefix, admin_role))
         click.echo()
         click.echo("-- Step 2: Create network rule and policy")
         click.echo(
             get_setup_network_for_user_sql(
-                user=user, db=db, cidrs=cidrs, force=force, comment_prefix=comment_prefix
+                user=user,
+                db=db,
+                cidrs=cidrs,
+                force=force,
+                comment_prefix=comment_prefix,
+                admin_role=admin_role,
             )
         )
         click.echo()
         click.echo("-- Step 3: Create authentication policy")
         click.echo(
-            get_auth_policy_sql(user, db, default_expiry_days, max_expiry_days, comment_prefix)
+            get_auth_policy_sql(
+                user, db, default_expiry_days, max_expiry_days, comment_prefix, admin_role
+            )
         )
         click.echo()
         click.echo("-- Step 4: Create PAT")
@@ -540,15 +572,22 @@ def create_command(
         click.echo("─" * 60)
         return
 
-    setup_service_user(user=user, pat_role=role, comment_prefix=comment_prefix)
+    setup_service_user(
+        user=user, pat_role=role, comment_prefix=comment_prefix, admin_role=admin_role
+    )
 
     click.echo(f"Setting up network rule and policy ({len(cidrs)} CIDRs)...")
     rule_fqn, policy_name = setup_network_for_user(
-        user=user, db=db, cidrs=cidrs, force=force, comment_prefix=comment_prefix
+        user=user,
+        db=db,
+        cidrs=cidrs,
+        force=force,
+        comment_prefix=comment_prefix,
+        admin_role=admin_role,
     )
     click.echo(f"✓ Network rule: {rule_fqn}")
     click.echo(f"✓ Network policy: {policy_name}")
-    assign_network_policy_to_user(user, policy_name)
+    assign_network_policy_to_user(user, policy_name, admin_role=admin_role)
     click.echo(f"✓ Assigned network policy to user {user}")
 
     setup_auth_policy(
@@ -557,9 +596,12 @@ def create_command(
         default_expiry_days=default_expiry_days,
         max_expiry_days=max_expiry_days,
         comment_prefix=comment_prefix,
+        admin_role=admin_role,
     )
 
-    password = create_or_rotate_pat(user=user, pat_role=role, pat_name=pat_name, rotate=rotate)
+    password = create_or_rotate_pat(
+        user=user, pat_role=role, pat_name=pat_name, rotate=rotate, admin_role=admin_role
+    )
 
     if output == "text":
         update_env(env_path=env_path, user=user, password=password, pat_role=role)
@@ -587,6 +629,13 @@ def create_command(
 @click.option("--drop-user", is_flag=True, help="Also drop the service user")
 @click.option("--pat-only", is_flag=True, help="Only remove PAT, keep policies")
 @click.option(
+    "--admin-role",
+    "-a",
+    envvar="SA_ADMIN_ROLE",
+    default="accountadmin",
+    help="Admin role for removing resources (default: ACCOUNTADMIN)",
+)
+@click.option(
     "--env-path",
     type=click.Path(path_type=Path),
     default=Path(".env"),
@@ -599,6 +648,7 @@ def remove_command(
     pat_name: str | None,
     drop_user: bool,
     pat_only: bool,
+    admin_role: str,
     env_path: Path,
 ) -> None:
     """
@@ -628,28 +678,28 @@ def remove_command(
     click.echo("─" * 40)
     click.echo("Step 1: Remove PAT")
     click.echo("─" * 40)
-    remove_pat(user=user, pat_name=pat_name)
+    remove_pat(user=user, pat_name=pat_name, admin_role=admin_role)
     click.echo()
 
     if not pat_only:
         click.echo("─" * 40)
         click.echo("Step 2: Remove Network Policy")
         click.echo("─" * 40)
-        cleanup_network_for_user(user=user, db=db)
+        cleanup_network_for_user(user=user, db=db, admin_role=admin_role)
         click.echo("✓ Network policy and rule removed")
         click.echo()
 
         click.echo("─" * 40)
         click.echo("Step 3: Remove Authentication Policy")
         click.echo("─" * 40)
-        remove_auth_policy(user=user, db=db)
+        remove_auth_policy(user=user, db=db, admin_role=admin_role)
         click.echo()
 
     if drop_user:
         click.echo("─" * 40)
         click.echo("Step 4: Drop Service User")
         click.echo("─" * 40)
-        remove_service_user(user=user)
+        remove_service_user(user=user, admin_role=admin_role)
         click.echo()
 
     click.echo("─" * 40)
@@ -668,6 +718,13 @@ def remove_command(
 @click.option("--role", "-r", required=True, envvar="SA_ROLE", help="Role restriction for the PAT")
 @click.option("--pat-name", envvar="SA_PAT", help="Name for the PAT token")
 @click.option(
+    "--admin-role",
+    "-a",
+    envvar="SA_ADMIN_ROLE",
+    default="accountadmin",
+    help="Admin role for rotating PAT (default: ACCOUNTADMIN)",
+)
+@click.option(
     "--env-path", type=click.Path(path_type=Path), default=Path(".env"), help=".env file path"
 )
 @click.option("--skip-verify", is_flag=True, help="Skip connection verification")
@@ -678,6 +735,7 @@ def rotate_command(
     user: str,
     role: str,
     pat_name: str | None,
+    admin_role: str,
     env_path: Path,
     skip_verify: bool,
     output: str,
@@ -707,13 +765,15 @@ def rotate_command(
     click.echo(f"PAT Name: {pat_name}")
     click.echo()
 
-    existing = get_existing_pat(user, pat_name)
+    existing = get_existing_pat(user, pat_name, admin_role=admin_role)
     if not existing:
         raise click.ClickException(
             f"PAT '{pat_name}' not found for user {user}. Use 'create' command first."
         )
 
-    password = create_or_rotate_pat(user=user, pat_role=role, pat_name=pat_name, rotate=True)
+    password = create_or_rotate_pat(
+        user=user, pat_role=role, pat_name=pat_name, rotate=True, admin_role=admin_role
+    )
 
     if output == "text":
         update_env(env_path=env_path, user=user, password=password, pat_role=role)

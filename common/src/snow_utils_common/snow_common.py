@@ -163,9 +163,13 @@ def get_snow_cli_options() -> SnowCLIOptions:
     return _snow_cli_options
 
 
-def run_snow_sql(query: str, *, format: str = "json", check: bool = True) -> dict | list | None:
+def run_snow_sql(
+    query: str, *, format: str = "json", check: bool = True, role: str | None = None
+) -> dict | list | None:
     """Execute a snow sql command and return parsed JSON output."""
     cmd = ["snow", "sql", *_snow_cli_options.get_flags(), "--query", query, "--format", format]
+    if role:
+        cmd.extend(["--role", role])
 
     if _snow_cli_options.debug:
         click.echo(f"[DEBUG] Running: {' '.join(cmd)}")
