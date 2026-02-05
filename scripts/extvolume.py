@@ -146,7 +146,7 @@ class ExternalVolumeConfig:
 
 def get_current_username() -> str:
     """Get the current username for prefixing resources.
-    
+
     Priority: SNOWFLAKE_USER env var > system username (getpass.getuser)
     This matches the pattern used by PAT/Networks skills.
     """
@@ -672,7 +672,8 @@ def cli(
     """
     Snowflake External Volume Manager
 
-    Setup and manage external volumes for Apache Iceberg tables with S3 storage.
+    Setup and manage external volumes with S3 storage for Iceberg tables,
+    data lake access, COPY INTO unload, and external stages.
 
     \b
     By default, AWS resources are prefixed with your username to avoid conflicts
