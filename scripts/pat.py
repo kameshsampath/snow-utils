@@ -61,6 +61,13 @@ def get_snowflake_account() -> str:
             f"Invalid JSON from connection test: {e}\nOutput: {result.stdout[:500]}"
         )
 
+    account = data.get("Account") or data.get("account")
+    if not account:
+        raise click.ClickException(
+            f"Could not find 'Account' in connection test output: {list(data.keys())}"
+        )
+    return account
+
 
 def normalize_identifier(name: str, style: str = "snowflake") -> str:
     """Normalize name for SQL or DNS compliance.
