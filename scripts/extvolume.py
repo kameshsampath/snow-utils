@@ -1149,12 +1149,14 @@ def create(
     help="Force delete bucket even if not empty",
 )
 @click.option(
-    "--yes", "-y",
+    "--yes",
+    "-y",
     is_flag=True,
     help="Skip confirmation prompt (for CoCo automation only)",
 )
 @click.option(
-    "-o", "--output",
+    "-o",
+    "--output",
     type=click.Choice(["text", "json"]),
     default="text",
     help="Output format",
@@ -1265,10 +1267,7 @@ def delete(
             click.echo()
 
     if output == "json":
-        click.echo(json.dumps({
-            "status": "success",
-            "deleted": deleted_resources
-        }, indent=2))
+        click.echo(json.dumps({"status": "success", "deleted": deleted_resources}, indent=2))
     else:
         click.echo("=" * 60)
         click.echo("✓ Resources deleted successfully!")
