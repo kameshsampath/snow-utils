@@ -1153,6 +1153,12 @@ def create(
     is_flag=True,
     help="Skip confirmation prompt (for CoCo automation only)",
 )
+@click.option(
+    "-o", "--output",
+    type=click.Choice(["text", "json"]),
+    default="text",
+    help="Output format",
+)
 @click.pass_context
 def delete(
     ctx: click.Context,
@@ -1163,6 +1169,7 @@ def delete(
     delete_bucket: bool,
     force: bool,
     yes: bool,
+    output: str,
 ) -> None:
     """
     Delete external volume and associated AWS resources.
@@ -1195,15 +1202,16 @@ def delete(
     # Generate Snowflake names (uppercase, underscores, SQL-safe)
     sf_volume_name = volume_name or to_sql_identifier(f"{bucket}_external_volume", prefix)
 
-    click.echo("=" * 60)
-    click.echo("Snowflake External Volume Manager - Delete")
-    click.echo("=" * 60)
-    click.echo()
-    click.echo(f"Bucket:          {aws_bucket_name}")
-    click.echo(f"IAM Role:        {aws_role_name}")
-    click.echo(f"IAM Policy:      {aws_policy_name}")
-    click.echo(f"External Volume: {sf_volume_name}")
-    click.echo()
+    if output == "text":
+        click.echo("=" * 60)
+        click.echo("Snowflake External Volume Manager - Delete")
+        click.echo("=" * 60)
+        click.echo()
+        click.echo(f"Bucket:          {aws_bucket_name}")
+        click.echo(f"IAM Role:        {aws_role_name}")
+        click.echo(f"IAM Policy:      {aws_policy_name}")
+        click.echo(f"External Volume: {sf_volume_name}")
+        click.echo()
 
     # Initialize AWS clients
     s3_client = boto3.client("s3", region_name=region)
@@ -1213,38 +1221,58 @@ def delete(
     account_id = get_aws_account_id(sts_client)
     policy_arn = f"arn:aws:iam::{account_id}:policy/{aws_policy_name}"
 
+    deleted_resources = []
+
     # Step 1: Drop external volume
-    click.echo("─" * 40)
-    click.echo("Step 1: Drop External Volume")
-    click.echo("─" * 40)
+    if output == "text":
+        click.echo("─" * 40)
+        click.echo("Step 1: Drop External Volume")
+        click.echo("─" * 40)
     drop_external_volume(sf_volume_name)
-    click.echo()
+    deleted_resources.append({"type": "external_volume", "name": sf_volume_name})
+    if output == "text":
+        click.echo()
 
     # Step 2: Delete IAM role
-    click.echo("─" * 40)
-    click.echo("Step 2: Delete IAM Role")
-    click.echo("─" * 40)
+    if output == "text":
+        click.echo("─" * 40)
+        click.echo("Step 2: Delete IAM Role")
+        click.echo("─" * 40)
     delete_iam_role(iam_client, aws_role_name, policy_arn)
-    click.echo()
+    deleted_resources.append({"type": "iam_role", "name": aws_role_name})
+    if output == "text":
+        click.echo()
 
     # Step 3: Delete IAM policy
-    click.echo("─" * 40)
-    click.echo("Step 3: Delete IAM Policy")
-    click.echo("─" * 40)
+    if output == "text":
+        click.echo("─" * 40)
+        click.echo("Step 3: Delete IAM Policy")
+        click.echo("─" * 40)
     delete_iam_policy(iam_client, policy_arn)
-    click.echo()
+    deleted_resources.append({"type": "iam_policy", "arn": policy_arn})
+    if output == "text":
+        click.echo()
 
     # Step 4: Delete bucket (optional)
     if delete_bucket:
-        click.echo("─" * 40)
-        click.echo("Step 4: Delete S3 Bucket")
-        click.echo("─" * 40)
+        if output == "text":
+            click.echo("─" * 40)
+            click.echo("Step 4: Delete S3 Bucket")
+            click.echo("─" * 40)
         delete_s3_bucket(s3_client, aws_bucket_name, force=force)
-        click.echo()
+        deleted_resources.append({"type": "s3_bucket", "name": aws_bucket_name})
+        if output == "text":
+            click.echo()
 
-    click.echo("=" * 60)
-    click.echo("✓ Resources deleted successfully!")
-    click.echo("=" * 60)
+    if output == "json":
+        click.echo(json.dumps({
+            "status": "success",
+            "deleted": deleted_resources
+        }, indent=2))
+    else:
+        click.echo("=" * 60)
+        click.echo("✓ Resources deleted successfully!")
+        click.echo("=" * 60)
 
 
 @cli.command()
