@@ -451,7 +451,6 @@ def cli(ctx: click.Context, verbose: bool, debug: bool, comment: str | None) -> 
 @click.option(
     "--admin-role",
     "-a",
-    envvar="SA_ADMIN_ROLE",
     default="accountadmin",
     help="Admin role for creating resources (default: ACCOUNTADMIN)",
 )
@@ -686,7 +685,6 @@ def create_command(
 @click.option(
     "--admin-role",
     "-a",
-    envvar="SA_ADMIN_ROLE",
     default="accountadmin",
     help="Admin role for removing resources (default: ACCOUNTADMIN)",
 )
@@ -777,7 +775,6 @@ def remove_command(
 @click.option(
     "--admin-role",
     "-a",
-    envvar="SA_ADMIN_ROLE",
     default="accountadmin",
     help="Admin role for rotating PAT (default: ACCOUNTADMIN)",
 )
