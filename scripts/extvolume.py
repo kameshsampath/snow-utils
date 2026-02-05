@@ -144,8 +144,12 @@ class ExternalVolumeConfig:
 
 
 def get_current_username() -> str:
-    """Get the current username for prefixing resources."""
-    return getpass.getuser().lower()
+    """Get the current username for prefixing resources.
+    
+    Priority: SNOWFLAKE_USER env var > system username (getpass.getuser)
+    This matches the pattern used by PAT/Networks skills.
+    """
+    return os.environ.get("SNOWFLAKE_USER", getpass.getuser()).lower()
 
 
 def to_aws_name(name: str, prefix: str | None = None) -> str:
