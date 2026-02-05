@@ -1148,7 +1148,11 @@ def create(
     is_flag=True,
     help="Force delete bucket even if not empty",
 )
-@click.confirmation_option(prompt="Are you sure you want to delete these resources?")
+@click.option(
+    "--yes", "-y",
+    is_flag=True,
+    help="Skip confirmation prompt (for CoCo automation only)",
+)
 @click.pass_context
 def delete(
     ctx: click.Context,
@@ -1158,6 +1162,7 @@ def delete(
     volume_name: str | None,
     delete_bucket: bool,
     force: bool,
+    yes: bool,
 ) -> None:
     """
     Delete external volume and associated AWS resources.
@@ -1177,6 +1182,8 @@ def delete(
         extvolume delete --bucket iceberg-data
         extvolume delete --bucket my-bucket --delete-bucket --force
     """
+    if not yes:
+        click.confirm("Are you sure you want to delete these resources?", abort=True)
     region = ctx.obj["region"]
     prefix = ctx.obj.get("prefix")
 
