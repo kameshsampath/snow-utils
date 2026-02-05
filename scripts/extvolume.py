@@ -25,6 +25,7 @@ Creates and configures:
 
 import getpass
 import json
+import os
 import re
 import time
 import uuid
