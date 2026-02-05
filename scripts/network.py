@@ -419,7 +419,8 @@ def get_setup_network_for_user_sql(
     rule_name = f"{user}_NETWORK_RULE".upper()
     policy_name = f"{user}_NETWORK_POLICY".upper()
     rule_fqn = f"{db.upper()}.{schema.upper()}.{rule_name}"
-    ctx = comment_prefix or user.upper()
+    user_part = (comment_prefix or user).upper()
+    project_part = db.upper().replace("-", "_")
 
     rule_sql = get_network_rule_sql(
         name=rule_name,
@@ -428,14 +429,14 @@ def get_setup_network_for_user_sql(
         values=cidrs,
         mode=NetworkRuleMode.INGRESS,
         rule_type=NetworkRuleType.IPV4,
-        comment=f"{ctx} network rule - managed by snow-utils-pat",
+        comment=f"Used by {user_part} - {project_part} app - managed by snow-utils-networks",
         force=force,
     )
 
     policy_sql = get_network_policy_sql(
         policy_name=policy_name,
         rule_refs=[rule_fqn],
-        comment=f"{ctx} network policy - managed by snow-utils-pat",
+        comment=f"Used by {user_part} - {project_part} app - managed by snow-utils-networks",
         force=force,
     )
 

@@ -125,6 +125,16 @@ def wait_for_trust_policy(
         click.echo("⚠ Trust policy propagation timeout, proceeding anyway...")
 
 
+def format_comment(prefix: str | None, bucket: str) -> str:
+    """Format comment using consistent pattern across all snow-utils skills.
+
+    Pattern: "Used by {USER} - {PROJECT} app - managed by snow-utils-volumes"
+    """
+    user_part = prefix.upper() if prefix else "USER"
+    project_part = bucket.upper().replace("-", "_")
+    return f"Used by {user_part} - {project_part} app - managed by snow-utils-volumes"
+
+
 @dataclass
 class ExternalVolumeConfig:
     """Configuration for external volume setup."""
@@ -137,6 +147,7 @@ class ExternalVolumeConfig:
     external_id: str
     aws_region: str
     allow_writes: bool = True
+    comment: str = ""
 
 
 # =============================================================================
@@ -509,6 +520,7 @@ def get_external_volume_sql(
     create_stmt = (
         "CREATE OR REPLACE EXTERNAL VOLUME" if force else "CREATE EXTERNAL VOLUME IF NOT EXISTS"
     )
+    comment_clause = f"\n    COMMENT = '{config.comment}'" if config.comment else ""
     return f"""{create_stmt} {config.volume_name}
     STORAGE_LOCATIONS = (
         (
@@ -519,7 +531,7 @@ def get_external_volume_sql(
             STORAGE_AWS_EXTERNAL_ID = '{config.external_id}'
         )
     )
-    ALLOW_WRITES = {allow_writes};"""
+    ALLOW_WRITES = {allow_writes}{comment_clause};"""
 
 
 def create_external_volume(
@@ -766,6 +778,12 @@ def cli(
     help="Overwrite existing external volume (CREATE OR REPLACE)",
 )
 @click.option(
+    "--comment",
+    "-c",
+    default=None,
+    help="Comment for external volume (default: auto-generated)",
+)
+@click.option(
     "--output",
     "-o",
     type=click.Choice(["text", "json"]),
@@ -785,6 +803,7 @@ def create(
     skip_verify: bool,
     dry_run: bool,
     force: bool,
+    comment: str | None,
     output: str,
 ) -> None:
     """
@@ -835,6 +854,7 @@ def create(
     sf_volume_name = volume_name or to_sql_identifier(f"{bucket}_external_volume", prefix)
     # Generate a unique external ID for security (prevents confused deputy problem)
     sf_external_id = external_id or generate_external_id(bucket, prefix)
+    sf_comment = comment or format_comment(prefix, bucket)
 
     config = ExternalVolumeConfig(
         bucket_name=aws_bucket_name,
@@ -845,6 +865,7 @@ def create(
         external_id=sf_external_id,
         aws_region=region,
         allow_writes=not no_writes,
+        comment=sf_comment,
     )
 
     # Helper to build result dict for JSON output
@@ -865,6 +886,7 @@ def create(
                 "external_volume": config.volume_name,
                 "external_id": config.external_id,
                 "allow_writes": config.allow_writes,
+                "comment": config.comment,
             },
         }
         if account_id:
