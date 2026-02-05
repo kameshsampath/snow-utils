@@ -506,8 +506,10 @@ def get_external_volume_sql(
 ) -> str:
     """Generate SQL for creating external volume."""
     allow_writes = "TRUE" if config.allow_writes else "FALSE"
-    create_stmt = "CREATE OR REPLACE" if force else "CREATE IF NOT EXISTS"
-    return f"""{create_stmt} EXTERNAL VOLUME {config.volume_name}
+    create_stmt = (
+        "CREATE OR REPLACE EXTERNAL VOLUME" if force else "CREATE EXTERNAL VOLUME IF NOT EXISTS"
+    )
+    return f"""{create_stmt} {config.volume_name}
     STORAGE_LOCATIONS = (
         (
             NAME = '{config.storage_location_name}'
