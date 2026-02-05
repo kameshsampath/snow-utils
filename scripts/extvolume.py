@@ -679,9 +679,21 @@ def verify_external_volume(volume_name: str) -> None:
     is_flag=True,
     help="Enable debug output (debug level logging for snow CLI, shows SQL)",
 )
+@click.option(
+    "--comment",
+    "-c",
+    default=None,
+    help="Comment for external volume (inferred from prefix/bucket if not provided)",
+)
 @click.pass_context
 def cli(
-    ctx: click.Context, region: str, prefix: str | None, no_prefix: bool, verbose: bool, debug: bool
+    ctx: click.Context,
+    region: str,
+    prefix: str | None,
+    no_prefix: bool,
+    verbose: bool,
+    debug: bool,
+    comment: str | None,
 ) -> None:
     """
     Snowflake External Volume Manager
@@ -717,6 +729,8 @@ def cli(
         ctx.obj["prefix"] = prefix
     else:
         ctx.obj["prefix"] = get_current_username()
+
+    ctx.obj["comment"] = comment
 
     if ctx.obj["prefix"]:
         click.echo(f"Using prefix: {ctx.obj['prefix']}")
@@ -778,12 +792,6 @@ def cli(
     help="Overwrite existing external volume (CREATE OR REPLACE)",
 )
 @click.option(
-    "--comment",
-    "-c",
-    default=None,
-    help="Comment for external volume (default: auto-generated)",
-)
-@click.option(
     "--output",
     "-o",
     type=click.Choice(["text", "json"]),
@@ -803,7 +811,6 @@ def create(
     skip_verify: bool,
     dry_run: bool,
     force: bool,
-    comment: str | None,
     output: str,
 ) -> None:
     """
@@ -854,7 +861,7 @@ def create(
     sf_volume_name = volume_name or to_sql_identifier(f"{bucket}_external_volume", prefix)
     # Generate a unique external ID for security (prevents confused deputy problem)
     sf_external_id = external_id or generate_external_id(bucket, prefix)
-    sf_comment = comment or format_comment(prefix, bucket)
+    sf_comment = ctx.obj.get("comment") or format_comment(prefix, bucket)
 
     config = ExternalVolumeConfig(
         bucket_name=aws_bucket_name,
