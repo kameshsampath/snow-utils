@@ -61,6 +61,27 @@ def get_snowflake_account() -> str:
             f"Invalid JSON from connection test: {e}\nOutput: {result.stdout[:500]}"
         )
 
+
+def normalize_identifier(name: str, style: str = "snowflake") -> str:
+    """Normalize name for SQL or DNS compliance.
+
+    Args:
+        name: Raw input (e.g., "My Cool Project!")
+        style: "snowflake" (UPPER_SNAKE) or "aws" (lower-kebab)
+
+    Returns:
+        Normalized identifier safe for SQL or AWS DNS
+    """
+    clean = re.sub(r"[^a-zA-Z0-9\\s\\-_]", "", name)
+    clean = re.sub(r"\\s+", "_" if style == "snowflake" else "-", clean)
+    clean = re.sub(r"[-_]+", "_" if style == "snowflake" else "-", clean)
+    clean = clean.strip("-_")
+
+    if style == "snowflake":
+        return clean.upper()
+    else:
+        return clean.lower()
+
     account = data.get("Account")
     if not account:
         raise click.ClickException(
@@ -71,7 +92,7 @@ def get_snowflake_account() -> str:
 
 def infer_comment_prefix(user: str) -> str:
     """Infer comment prefix from user name by stripping common suffixes."""
-    upper_user = user.upper()
+    upper_user = normalize_identifier(user, "snowflake")
     for suffix in ("_RUNNER", "_SA", "_SERVICE", "_USER"):
         if upper_user.endswith(suffix):
             return upper_user[: -len(suffix)]
@@ -85,11 +106,12 @@ def format_comment(comment_prefix: str, suffix: str = "") -> str:
     If no underscore found, uses the whole prefix as project name.
     Avoids possessives ('s) to prevent SQL quoting issues.
     """
-    parts = comment_prefix.split("_", 1)
+    normalized = normalize_identifier(comment_prefix, "snowflake")
+    parts = normalized.split("_", 1)
     if len(parts) == 2:
         user_part, project_part = parts
         return f"Used by {user_part} - {project_part} app{suffix} - managed by snow-utils-pat"
-    return f"Used by {comment_prefix} app{suffix} - managed by snow-utils-pat"
+    return f"Used by {normalized} app{suffix} - managed by snow-utils-pat"
 
 
 def get_service_user_sql(

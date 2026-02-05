@@ -22,6 +22,8 @@ Provides:
 - IPv4 preset support (GitHub Actions, Google, local IP)
 """
 
+import re
+
 import click
 from snow_utils_common import (
     NetworkRuleMode,
@@ -33,6 +35,27 @@ from snow_utils_common import (
     set_snow_cli_options,
     validate_mode_type,
 )
+
+
+def normalize_identifier(name: str, style: str = "snowflake") -> str:
+    """Normalize name for SQL or DNS compliance.
+
+    Args:
+        name: Raw input (e.g., "My Cool Project!")
+        style: "snowflake" (UPPER_SNAKE) or "aws" (lower-kebab)
+
+    Returns:
+        Normalized identifier safe for SQL or AWS DNS
+    """
+    clean = re.sub(r"[^a-zA-Z0-9\s\-_]", "", name)
+    clean = re.sub(r"\s+", "_" if style == "snowflake" else "-", clean)
+    clean = re.sub(r"[-_]+", "_" if style == "snowflake" else "-", clean)
+    clean = clean.strip("-_")
+
+    if style == "snowflake":
+        return clean.upper()
+    else:
+        return clean.lower()
 
 
 def get_network_rule_sql(
@@ -419,8 +442,8 @@ def get_setup_network_for_user_sql(
     rule_name = f"{user}_NETWORK_RULE".upper()
     policy_name = f"{user}_NETWORK_POLICY".upper()
     rule_fqn = f"{db.upper()}.{schema.upper()}.{rule_name}"
-    user_part = (comment_prefix or user).upper()
-    project_part = db.upper().replace("-", "_")
+    user_part = normalize_identifier(comment_prefix or user, "snowflake")
+    project_part = normalize_identifier(db, "snowflake")
 
     rule_sql = get_network_rule_sql(
         name=rule_name,

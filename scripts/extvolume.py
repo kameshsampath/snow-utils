@@ -125,13 +125,34 @@ def wait_for_trust_policy(
         click.echo("⚠ Trust policy propagation timeout, proceeding anyway...")
 
 
+def normalize_identifier(name: str, style: str = "snowflake") -> str:
+    """Normalize name for SQL or DNS compliance.
+
+    Args:
+        name: Raw input (e.g., "My Cool Project!")
+        style: "snowflake" (UPPER_SNAKE) or "aws" (lower-kebab)
+
+    Returns:
+        Normalized identifier safe for SQL or AWS DNS
+    """
+    clean = re.sub(r"[^a-zA-Z0-9\s\-_]", "", name)
+    clean = re.sub(r"\s+", "_" if style == "snowflake" else "-", clean)
+    clean = re.sub(r"[-_]+", "_" if style == "snowflake" else "-", clean)
+    clean = clean.strip("-_")
+
+    if style == "snowflake":
+        return clean.upper()
+    else:
+        return clean.lower()
+
+
 def format_comment(prefix: str | None, bucket: str) -> str:
     """Format comment using consistent pattern across all snow-utils skills.
 
     Pattern: "Used by {USER} - {PROJECT} app - managed by snow-utils-volumes"
     """
-    user_part = prefix.upper() if prefix else "USER"
-    project_part = bucket.upper().replace("-", "_")
+    user_part = normalize_identifier(prefix, "snowflake") if prefix else "USER"
+    project_part = normalize_identifier(bucket, "snowflake")
     return f"Used by {user_part} - {project_part} app - managed by snow-utils-volumes"
 
 
@@ -245,8 +266,8 @@ def get_resource_tags(prefix: str | None, bucket: str, volume_name: str) -> list
 
     Tags follow the consistent snow-utils pattern for all AWS resources.
     """
-    user_part = (prefix or "unknown").upper()
-    project_part = bucket.upper().replace("-", "_")
+    user_part = normalize_identifier(prefix, "snowflake") if prefix else "UNKNOWN"
+    project_part = normalize_identifier(bucket, "snowflake")
     return [
         {"Key": "managed-by", "Value": "snow-utils-volumes"},
         {"Key": "user", "Value": user_part},
