@@ -240,15 +240,34 @@ def get_aws_account_id(sts_client: Any) -> str:
     return sts_client.get_caller_identity()["Account"]
 
 
+def get_resource_tags(prefix: str | None, bucket: str, volume_name: str) -> list[dict[str, str]]:
+    """Generate AWS resource tags for traceability and cost allocation.
+
+    Tags follow the consistent snow-utils pattern for all AWS resources.
+    """
+    user_part = (prefix or "unknown").upper()
+    project_part = bucket.upper().replace("-", "_")
+    return [
+        {"Key": "managed-by", "Value": "snow-utils-volumes"},
+        {"Key": "user", "Value": user_part},
+        {"Key": "project", "Value": project_part},
+        {"Key": "snowflake-volume", "Value": volume_name},
+    ]
+
+
 # =============================================================================
 # S3 Bucket Operations
 # =============================================================================
 
 
 def create_s3_bucket(
-    s3_client: Any, bucket_name: str, region: str, versioning: bool = True
+    s3_client: Any,
+    bucket_name: str,
+    region: str,
+    versioning: bool = True,
+    tags: list[dict[str, str]] | None = None,
 ) -> bool:
-    """Create an S3 bucket with optional versioning."""
+    """Create an S3 bucket with optional versioning and tags."""
     click.echo(f"Creating S3 bucket: {bucket_name}")
 
     try:
@@ -281,6 +300,11 @@ def create_s3_bucket(
                 Bucket=bucket_name, VersioningConfiguration={"Status": "Enabled"}
             )
             click.echo("✓ Enabled bucket versioning")
+
+        # Apply tags for traceability
+        if tags:
+            s3_client.put_bucket_tagging(Bucket=bucket_name, Tagging={"TagSet": tags})
+            click.echo("✓ Applied resource tags")
 
         return True
 
@@ -349,7 +373,12 @@ def get_s3_access_policy(bucket_name: str) -> dict:
     }
 
 
-def create_iam_policy(iam_client: Any, policy_name: str, bucket_name: str) -> str:
+def create_iam_policy(
+    iam_client: Any,
+    policy_name: str,
+    bucket_name: str,
+    tags: list[dict[str, str]] | None = None,
+) -> str:
     """Create IAM policy for S3 access and return the policy ARN."""
     click.echo(f"Creating IAM policy: {policy_name}")
 
@@ -368,11 +397,14 @@ def create_iam_policy(iam_client: Any, policy_name: str, bucket_name: str) -> st
 
         # Create policy
         policy_document = get_s3_access_policy(bucket_name)
-        response = iam_client.create_policy(
-            PolicyName=policy_name,
-            PolicyDocument=json.dumps(policy_document),
-            Description=f"Policy for Snowflake external volume access to {bucket_name}",
-        )
+        create_params: dict[str, Any] = {
+            "PolicyName": policy_name,
+            "PolicyDocument": json.dumps(policy_document),
+            "Description": f"Policy for Snowflake external volume access to {bucket_name}",
+        }
+        if tags:
+            create_params["Tags"] = tags
+        response = iam_client.create_policy(**create_params)
         policy_arn = response["Policy"]["Arn"]
         click.echo(f"✓ Created policy: {policy_arn}")
         return policy_arn
@@ -435,6 +467,7 @@ def create_iam_role(
     policy_arn: str,
     account_id: str,
     external_id: str,
+    tags: list[dict[str, str]] | None = None,
 ) -> str:
     """Create IAM role with initial trust policy and return the role ARN."""
     click.echo(f"Creating IAM role: {role_name}")
@@ -452,11 +485,14 @@ def create_iam_role(
 
         # Create role with initial trust policy
         trust_policy = get_initial_trust_policy(account_id, external_id)
-        response = iam_client.create_role(
-            RoleName=role_name,
-            AssumeRolePolicyDocument=json.dumps(trust_policy),
-            Description="IAM role for Snowflake external volume access",
-        )
+        create_params: dict[str, Any] = {
+            "RoleName": role_name,
+            "AssumeRolePolicyDocument": json.dumps(trust_policy),
+            "Description": "IAM role for Snowflake external volume access",
+        }
+        if tags:
+            create_params["Tags"] = tags
+        response = iam_client.create_role(**create_params)
         role_arn = response["Role"]["Arn"]
         click.echo(f"✓ Created role: {role_arn}")
 
@@ -875,6 +911,9 @@ def create(
         comment=sf_comment,
     )
 
+    # Generate resource tags for AWS resources (used in create and JSON output)
+    aws_tags = get_resource_tags(prefix, bucket, config.volume_name)
+
     # Helper to build result dict for JSON output
     def build_result(
         status: str, account_id: str | None = None, role_arn: str | None = None
@@ -888,6 +927,7 @@ def create(
                 "policy": config.policy_name,
                 "storage_location": config.storage_location_name,
                 "region": config.aws_region,
+                "tags": {tag["Key"]: tag["Value"] for tag in aws_tags},
             },
             "snowflake": {
                 "external_volume": config.volume_name,
@@ -1011,6 +1051,7 @@ def create(
 
     account_id = get_aws_account_id(sts_client)
     policy_arn = f"arn:aws:iam::{account_id}:policy/{config.policy_name}"
+
     if output == "text":
         click.echo(f"AWS Account ID: {mask_sensitive_string(account_id, 'aws_account_id')}")
         click.echo()
@@ -1047,14 +1088,14 @@ def create(
         click.echo("─" * 40)
         click.echo("Step 1: Create S3 Bucket")
         click.echo("─" * 40)
-        created_bucket = create_s3_bucket(s3_client, config.bucket_name, region)
+        created_bucket = create_s3_bucket(s3_client, config.bucket_name, region, tags=aws_tags)
         click.echo()
 
         # Step 2: Create IAM policy
         click.echo("─" * 40)
         click.echo("Step 2: Create IAM Policy")
         click.echo("─" * 40)
-        policy_arn = create_iam_policy(iam_client, config.policy_name, config.bucket_name)
+        policy_arn = create_iam_policy(iam_client, config.policy_name, config.bucket_name, tags=aws_tags)
         created_policy = True
         click.echo()
 
@@ -1063,7 +1104,7 @@ def create(
         click.echo("Step 3: Create IAM Role")
         click.echo("─" * 40)
         role_arn = create_iam_role(
-            iam_client, config.role_name, policy_arn, account_id, config.external_id
+            iam_client, config.role_name, policy_arn, account_id, config.external_id, tags=aws_tags
         )
         created_role = True
         click.echo()
