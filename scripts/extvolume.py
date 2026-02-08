@@ -36,6 +36,7 @@ from typing import Any
 import boto3
 import click
 from botocore.exceptions import ClientError
+from dotenv import load_dotenv
 from snow_utils_common import (
     mask_sensitive_string,
     run_snow_sql,
@@ -703,6 +704,10 @@ def verify_external_volume(volume_name: str) -> None:
 # =============================================================================
 # CLI Commands
 # =============================================================================
+
+# Auto-load .env from current working directory so callers
+# don't need ``set -a && source .env && set +a`` before invoking.
+load_dotenv()
 
 
 @click.group()

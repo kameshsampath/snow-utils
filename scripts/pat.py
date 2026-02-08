@@ -28,6 +28,7 @@ import subprocess
 from pathlib import Path
 
 import click
+from dotenv import load_dotenv
 from network import (
     assign_network_policy_to_user,
     cleanup_network_for_user,
@@ -381,6 +382,11 @@ def verify_connection(user: str, password: str, pat_role: str) -> None:
         raise click.ClickException(f"Connection verification failed: {result.stderr}")
 
     click.echo("✓ Connection verified successfully")
+
+
+# Auto-load .env from current working directory so callers
+# don't need ``set -a && source .env && set +a`` before invoking.
+load_dotenv()
 
 
 @click.group(invoke_without_command=True)

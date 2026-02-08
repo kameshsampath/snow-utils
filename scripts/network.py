@@ -25,6 +25,7 @@ Provides:
 import re
 
 import click
+from dotenv import load_dotenv
 from snow_utils_common import (
     NetworkRuleMode,
     NetworkRuleType,
@@ -571,6 +572,11 @@ def unassign_network_policy_from_user(user: str, admin_role: str = "accountadmin
 
 MODE_CHOICES = ["ingress", "internal_stage", "egress", "postgres_ingress", "postgres_egress"]
 TYPE_CHOICES = ["ipv4", "host_port", "private_host_port", "awsvpceid"]
+
+
+# Auto-load .env from current working directory so callers
+# don't need ``set -a && source .env && set +a`` before invoking.
+load_dotenv()
 
 
 @click.group()
