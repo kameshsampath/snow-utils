@@ -1256,7 +1256,7 @@ def create(
     "--yes",
     "-y",
     is_flag=True,
-    help="Skip confirmation prompt (for CoCo automation only)",
+    help="Skip confirmation prompt (for Cortex Code automation only)",
 )
 @click.option(
     "-o",
