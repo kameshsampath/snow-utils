@@ -29,7 +29,7 @@ from pathlib import Path
 
 import click
 from dotenv import load_dotenv
-from network import (
+from snow_utils.network import (
     assign_network_policy_to_user,
     cleanup_network_for_user,
     get_setup_network_for_user_sql,
