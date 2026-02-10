@@ -478,6 +478,12 @@ def cli(ctx: click.Context, verbose: bool, debug: bool, comment: str | None) -> 
     is_flag=True,
     help="Skip network rule/policy creation (use when delegating to snow-utils-networks skill)",
 )
+@click.option(
+    "--dot-env-file",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Write SA_PAT directly to this .env file (avoids token leaking in shell history)",
+)
 @click.pass_context
 def create_command(
     ctx: click.Context,
@@ -499,6 +505,7 @@ def create_command(
     force: bool,
     output: str,
     skip_network: bool,
+    dot_env_file: Path | None,
 ) -> None:
     """
     Create or rotate a PAT for a service user.
@@ -663,8 +670,12 @@ def create_command(
         user=user, pat_role=role, pat_name=pat_name, rotate=rotate, admin_role=admin_role
     )
 
+    # When --dot-env-file is provided, write SA_PAT directly to that file
+    # so the raw token never appears in shell command text (security).
+    target_env = dot_env_file if dot_env_file else env_path
+
     if output == "text":
-        update_env(env_path=env_path, user=user, password=password, pat_role=role)
+        update_env(env_path=target_env, user=user, password=password, pat_role=role)
 
     if not skip_verify and output == "text":
         verify_connection(user=user, password=password, pat_role=role)
@@ -672,13 +683,20 @@ def create_command(
     if output == "json":
         result = build_result("success", password)
         result["cidrs"] = cidrs
-        result["env_file"] = str(env_path)
+        result["env_file"] = str(target_env)
+        # When --dot-env-file is used, redact the token from JSON output
+        if dot_env_file:
+            update_env(env_path=dot_env_file, user=user, password=password, pat_role=role)
+            result["pat"] = "***REDACTED***"
+            result["pat_written_to"] = str(dot_env_file)
         click.echo(json.dumps(result, indent=2))
         return
 
     click.echo()
     click.echo("=" * 50)
     click.echo("✓ PAT setup completed successfully!")
+    if dot_env_file:
+        click.echo(f"  SA_PAT written to {dot_env_file} (token NOT shown in output)")
     click.echo("=" * 50)
 
 
