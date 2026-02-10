@@ -897,8 +897,8 @@ def create(
         extvolume create --bucket iceberg-data
         # Creates: ksampath-iceberg-data (S3), KSAMPATH_ICEBERG_DATA_EXTERNAL_VOLUME (Snowflake)
 
-        extvolume --no-prefix create --bucket my-bucket
-        # Creates: my-bucket (S3), MY_BUCKET_EXTERNAL_VOLUME (Snowflake)
+        extvolume --no-prefix create --bucket iceberg-data
+        # Creates: iceberg-data (S3), ICEBERG_DATA_EXTERNAL_VOLUME (Snowflake)
 
         extvolume create --bucket iceberg-data --dry-run
         # Preview resources without creating them
@@ -1293,7 +1293,7 @@ def delete(
     \b
     Example:
         extvolume delete --bucket iceberg-data
-        extvolume delete --bucket my-bucket --delete-bucket --force
+        extvolume delete --bucket iceberg-data --delete-bucket --force
     """
     if not yes:
         click.confirm("Are you sure you want to delete these resources?", abort=True)
