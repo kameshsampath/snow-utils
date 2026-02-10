@@ -287,7 +287,7 @@ def _escape_env_value(value: str) -> str:
 
 
 def update_env(env_path: Path, user: str, password: str, pat_role: str) -> None:
-    """Update .env file with the new SNOWFLAKE_PASSWORD and SA_ROLE."""
+    """Update .env file with the new SA_PAT, SA_USER, and SA_ROLE."""
     if not env_path.exists():
         click.echo(f"⚠ {env_path} not found, skipping update")
         return
@@ -297,13 +297,13 @@ def update_env(env_path: Path, user: str, password: str, pat_role: str) -> None:
     backup_path = env_path.with_suffix(".env.bak")
     shutil.copy(env_path, backup_path)
 
-    password_pattern = r"^SNOWFLAKE_PASSWORD=.*$"
-    password_replacement = f"SNOWFLAKE_PASSWORD={_escape_env_value(password)}"
+    pat_pattern = r"^SA_PAT=.*$"
+    pat_replacement = f"SA_PAT={_escape_env_value(password)}"
 
-    if re.search(password_pattern, content, re.MULTILINE):
-        new_content = re.sub(password_pattern, password_replacement, content, flags=re.MULTILINE)
+    if re.search(pat_pattern, content, re.MULTILINE):
+        new_content = re.sub(pat_pattern, pat_replacement, content, flags=re.MULTILINE)
     else:
-        new_content = content.rstrip() + f"\n{password_replacement}\n"
+        new_content = content.rstrip() + f"\n{pat_replacement}\n"
 
     user_pattern = r"^SA_USER=.*$"
     user_replacement = f"SA_USER={_escape_env_value(user)}"
@@ -322,7 +322,7 @@ def update_env(env_path: Path, user: str, password: str, pat_role: str) -> None:
         new_content = new_content.rstrip() + f"\n{role_replacement}\n"
 
     env_path.write_text(new_content)
-    click.echo(f"✓ Updated {env_path} with new SNOWFLAKE_PASSWORD, SA_USER, and SA_ROLE")
+    click.echo(f"✓ Updated {env_path} with new SA_PAT, SA_USER, and SA_ROLE")
 
 
 def clear_env(env_path: Path) -> None:
@@ -337,11 +337,11 @@ def clear_env(env_path: Path) -> None:
     shutil.copy(env_path, backup_path)
     click.echo(f"✓ Created backup: {backup_path}")
 
-    password_pattern = r"^SNOWFLAKE_PASSWORD=.*$"
-    new_content = re.sub(password_pattern, 'SNOWFLAKE_PASSWORD=""', content, flags=re.MULTILINE)
+    pat_pattern = r"^SA_PAT=.*$"
+    new_content = re.sub(pat_pattern, 'SA_PAT=""', content, flags=re.MULTILINE)
 
     env_path.write_text(new_content)
-    click.echo(f"✓ Cleared SNOWFLAKE_PASSWORD in {env_path}")
+    click.echo(f"✓ Cleared SA_PAT in {env_path}")
 
 
 def verify_connection(user: str, password: str, pat_role: str) -> None:
@@ -896,7 +896,7 @@ def verify_command(
             import re
 
             match = re.search(
-                r'^SNOWFLAKE_PASSWORD\s*=\s*["\']?([^"\'#\n]+)["\']?', content, re.MULTILINE
+                r'^SA_PAT\s*=\s*["\']?([^"\'#\n]+)["\']?', content, re.MULTILINE
             )
             if match:
                 password = match.group(1).strip()
@@ -904,7 +904,7 @@ def verify_command(
 
     if not password:
         raise click.ClickException(
-            "No PAT token provided. Use --password, SA_PAT env var, or ensure .env contains SNOWFLAKE_PASSWORD"
+            "No PAT token provided. Use --password, SA_PAT env var, or ensure .env contains SA_PAT"
         )
 
     click.echo("=" * 50)
