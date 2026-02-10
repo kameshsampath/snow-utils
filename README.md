@@ -591,7 +591,7 @@ All variables can be set in `.env` or exported in your shell.
 
 ## Debugging
 
-Both `pat.py`, `extvolume.py`, and `network.py` support verbose and debug modes for troubleshooting:
+The CLI tools (`snow-utils-pat`, `snow-utils-volumes`, `snow-utils-networks`) support verbose and debug modes for troubleshooting:
 
 ```bash
 # Verbose mode - shows info level output from snow CLI
