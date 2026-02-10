@@ -25,10 +25,10 @@ dotenv: [".env"]
 vars:
   # Use uv run to automatically use the project's venv from any directory
   PYTHON: uv run --project {{.TASKFILE_DIR}}
-  # CLI scripts
-  PAT_CLI: "{{.PYTHON}} {{.TASKFILE_DIR}}/scripts/pat.py"
-  EXTVOLUME_CLI: "{{.PYTHON}} {{.TASKFILE_DIR}}/scripts/extvolume.py"
-  NETWORK_CLI: "{{.PYTHON}} {{.TASKFILE_DIR}}/scripts/network.py"
+  # CLI entry points (installed via pyproject.toml [project.scripts])
+  PAT_CLI: "{{.PYTHON}} snow-utils-pat"
+  EXTVOLUME_CLI: "{{.PYTHON}} snow-utils-volumes"
+  NETWORK_CLI: "{{.PYTHON}} snow-utils-networks"
   # Default bucket name for demos
   BUCKET: iceberg-demo
   # AWS region
@@ -767,35 +767,3 @@ tasks:
       - echo "  3. Run snow-utils tasks:"
       - echo "     task pat:create SA_USER=my_sa SA_ROLE=app_role"
 
-  # ===========================================================================
-  # Skills Sync Tasks
-  # ===========================================================================
-
-  skills:sync:
-    desc: Sync common/ and scripts to snow-utils-skills repo
-    vars:
-      SKILLS_REPO: '{{.SKILLS_REPO | default (printf "%s/git/kameshsampath/snow-utils-skills" .HOME)}}'
-    preconditions:
-      - sh: test -d "{{.SKILLS_REPO}}"
-        msg: "Skills repo not found at {{.SKILLS_REPO}}. Set SKILLS_REPO env var."
-    cmds:
-      - echo "Syncing to {{.SKILLS_REPO}}..."
-      - echo ""
-      - echo "→ common/ (shared library)"
-      - rsync -avh --delete --exclude '__pycache__' --exclude '.venv' --exclude 'uv.lock' common/
-        "{{.SKILLS_REPO}}/common/"
-      - echo ""
-      - echo "→ snow-utils-pat/scripts/"
-      - rsync -avh --itemize-changes scripts/pat.py scripts/network.py "{{.SKILLS_REPO}}/snow-utils-pat/scripts/"
-      - echo ""
-      - echo "→ snow-utils-networks/scripts/"
-      - rsync -avh --itemize-changes scripts/network.py "{{.SKILLS_REPO}}/snow-utils-networks/scripts/"
-      - echo ""
-      - echo "→ snow-utils-volumes/scripts/"
-      - rsync -avh --itemize-changes scripts/extvolume.py "{{.SKILLS_REPO}}/snow-utils-volumes/scripts/"
-      - echo ""
-      - echo "✓ Sync complete. Review changes in {{.SKILLS_REPO}}"
-      - echo ""
-      - echo "Next steps:"
-      - echo "  cd {{.SKILLS_REPO}}"
-      - echo "  git status"
