@@ -484,6 +484,13 @@ def cli(ctx: click.Context, verbose: bool, debug: bool, comment: str | None) -> 
     default=None,
     help="Write SA_PAT directly to this .env file (avoids token leaking in shell history)",
 )
+@click.option(
+    "--yes",
+    "-y",
+    is_flag=True,
+    default=False,
+    help="Skip interactive confirmation (use after reviewing dry-run output)",
+)
 @click.pass_context
 def create_command(
     ctx: click.Context,
@@ -506,6 +513,7 @@ def create_command(
     output: str,
     skip_network: bool,
     dot_env_file: Path | None,
+    yes: bool,
 ) -> None:
     """
     Create or rotate a PAT for a service user.
@@ -631,7 +639,7 @@ def create_command(
         click.echo("─" * 60)
         return
 
-    if output == "text":
+    if output == "text" and not yes:
         if not click.confirm("\nProceed with resource creation?", default=True):
             click.echo("Aborted.")
             return

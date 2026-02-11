@@ -666,6 +666,10 @@ def policy() -> None:
 @click.option(
     "-o", "--output", type=click.Choice(["text", "json"]), default="text", help="Output format"
 )
+@click.option(
+    "--yes", "-y", is_flag=True, default=False,
+    help="Skip interactive confirmation (use after reviewing dry-run output)",
+)
 def rule_create(
     name: str,
     db: str,
@@ -681,6 +685,7 @@ def rule_create(
     policy_name: str | None,
     policy_mode: str,
     output: str,
+    yes: bool,
 ) -> None:
     """
     Create a network rule with presets and/or custom values.
@@ -739,7 +744,7 @@ def rule_create(
     if dry_run:
         click.echo("SQL that would be executed:")
         click.echo("─" * 60)
-    elif output == "text":
+    elif output == "text" and not yes:
         if not click.confirm("\nProceed with network rule creation?", default=True):
             click.echo("Aborted.")
             return
@@ -886,7 +891,11 @@ def rule_list_cmd(db: str, schema: str, admin_role: str) -> None:
 @click.option(
     "-o", "--output", type=click.Choice(["text", "json"]), default="text", help="Output format"
 )
-def policy_create_cmd(name: str, rules: str, dry_run: bool, force: bool, output: str) -> None:
+@click.option(
+    "--yes", "-y", is_flag=True, default=False,
+    help="Skip interactive confirmation (use after reviewing dry-run output)",
+)
+def policy_create_cmd(name: str, rules: str, dry_run: bool, force: bool, output: str, yes: bool) -> None:
     """
     Create a network policy with specified rules.
 
@@ -903,7 +912,7 @@ def policy_create_cmd(name: str, rules: str, dry_run: bool, force: bool, output:
     if dry_run:
         click.echo("SQL that would be executed:")
         click.echo("─" * 60)
-    elif output == "text":
+    elif output == "text" and not yes:
         if not click.confirm("\nProceed with network policy creation?", default=True):
             click.echo("Aborted.")
             return
@@ -925,7 +934,11 @@ def policy_create_cmd(name: str, rules: str, dry_run: bool, force: bool, output:
 @click.option(
     "-o", "--output", type=click.Choice(["text", "json"]), default="text", help="Output format"
 )
-def policy_alter_cmd(name: str, rules: str, dry_run: bool, output: str) -> None:
+@click.option(
+    "--yes", "-y", is_flag=True, default=False,
+    help="Skip interactive confirmation (use after reviewing dry-run output)",
+)
+def policy_alter_cmd(name: str, rules: str, dry_run: bool, output: str, yes: bool) -> None:
     """
     Add rules to an existing network policy.
 
@@ -942,7 +955,7 @@ def policy_alter_cmd(name: str, rules: str, dry_run: bool, output: str) -> None:
     if dry_run:
         click.echo("SQL that would be executed:")
         click.echo("─" * 60)
-    elif output == "text":
+    elif output == "text" and not yes:
         if not click.confirm("\nProceed with policy modification?", default=True):
             click.echo("Aborted.")
             return
