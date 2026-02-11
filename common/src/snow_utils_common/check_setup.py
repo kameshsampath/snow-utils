@@ -127,6 +127,16 @@ def check(database: str | None, run_setup: bool, suggest: bool):
 
     db_name = database or os.environ.get("SNOW_UTILS_DB") or default_db
 
+    # Display snow CLI version info
+    try:
+        ver_result = subprocess.run(
+            ["snow", "--version"], capture_output=True, text=True
+        )
+        snow_version = ver_result.stdout.strip() if ver_result.returncode == 0 else "unknown"
+        click.echo(f"Using {snow_version}")
+    except FileNotFoundError:
+        click.echo(click.style("snow CLI not found on PATH", fg="red"))
+
     click.echo("Snow-utils infrastructure check\n")
     if user:
         click.echo(f"Detected user: {user}")
