@@ -190,11 +190,16 @@ def run_snow_sql(
     return None
 
 
-def discover_snowflake_connection() -> dict:
-    """Interactive Snowflake connection discovery via snow CLI.
+def discover_snowflake_connection(connection_name: str | None = None) -> dict:
+    """Snowflake connection discovery via snow CLI.
 
-    Lists available connections, prompts user to select one, tests it,
-    and returns connection details. Reusable across all snow-utils skills.
+    Supports both interactive (Power CLI) and non-interactive (Cortex Code) modes:
+    - If connection_name is provided, skips listing/prompting and tests directly.
+    - If connection_name is None, lists connections and prompts user to select.
+
+    Args:
+        connection_name: Optional connection name to use directly (non-interactive).
+            When called from Cortex Code / SKILL.md, always pass this explicitly.
 
     Returns:
         dict with keys: connection_name, account, user, host, role, database, warehouse.
@@ -203,60 +208,61 @@ def discover_snowflake_connection() -> dict:
     Raises:
         click.ClickException on failure (no connections, test failed, etc.)
     """
-    result = subprocess.run(
-        ["snow", "connection", "list", "--format=json"],
-        capture_output=True, text=True,
-    )
-    if result.returncode != 0:
-        raise click.ClickException(
-            f"Failed to list Snowflake connections: {result.stderr.strip()}\n"
-            "Is snowflake-cli installed? Run: pip install snowflake-cli"
+    if connection_name is None:
+        result = subprocess.run(
+            ["snow", "connection", "list", "--format=json"],
+            capture_output=True, text=True,
         )
+        if result.returncode != 0:
+            raise click.ClickException(
+                f"Failed to list Snowflake connections: {result.stderr.strip()}\n"
+                "Is snowflake-cli installed? Run: pip install snowflake-cli"
+            )
 
-    connections = json.loads(result.stdout)
-    if not connections:
-        raise click.ClickException(
-            "No Snowflake connections found.\nRun: snow connection add"
+        connections = json.loads(result.stdout)
+        if not connections:
+            raise click.ClickException(
+                "No Snowflake connections found.\nRun: snow connection add"
+            )
+
+        click.echo("Available Snowflake connections:\n")
+        for i, c in enumerate(connections, 1):
+            name = c.get("connection_name", "unknown")
+            params = c.get("parameters", {})
+            user = params.get("user", "")
+            account = params.get("account", "")
+            marker = " *" if c.get("is_default") else ""
+            click.echo(f"  {i}. {name}  ({user}@{account}){marker}")
+
+        default_idx = next(
+            (i for i, c in enumerate(connections, 1) if c.get("is_default")), 1,
         )
+        choice = click.prompt(
+            "\nSelect connection (* = default)",
+            type=click.IntRange(1, len(connections)),
+            default=default_idx,
+        )
+        connection_name = connections[choice - 1].get("connection_name", "unknown")
 
-    click.echo("Available Snowflake connections:\n")
-    for i, c in enumerate(connections, 1):
-        name = c.get("connection_name", "unknown")
-        params = c.get("parameters", {})
-        user = params.get("user", "")
-        account = params.get("account", "")
-        marker = " *" if c.get("is_default") else ""
-        click.echo(f"  {i}. {name}  ({user}@{account}){marker}")
-
-    default_idx = next(
-        (i for i, c in enumerate(connections, 1) if c.get("is_default")), 1,
-    )
-    choice = click.prompt(
-        "\nSelect connection (* = default)",
-        type=click.IntRange(1, len(connections)),
-        default=default_idx,
-    )
-    selected = connections[choice - 1].get("connection_name", "unknown")
-
-    click.echo(f"\nTesting connection '{selected}'...")
+    click.echo(f"\nTesting connection '{connection_name}'...")
     test_result = subprocess.run(
-        ["snow", "connection", "test", "-c", selected, "--format=json"],
+        ["snow", "connection", "test", "-c", connection_name, "--format=json"],
         capture_output=True, text=True,
     )
     if test_result.returncode != 0:
         raise click.ClickException(
-            f"Connection test failed for '{selected}': {test_result.stderr.strip()}"
+            f"Connection test failed for '{connection_name}': {test_result.stderr.strip()}"
         )
 
     test_data = json.loads(test_result.stdout)
 
-    info = {"connection_name": selected}
+    info = {"connection_name": connection_name}
     for key in ("Account", "User", "Host", "Role", "Database", "Warehouse"):
         val = test_data.get(key, "")
         if val:
             info[key.lower()] = val
 
-    click.echo(f"✓ Connection '{selected}' OK  (user={info.get('user', '?')}, account={info.get('account', '?')})")
+    click.echo(f"✓ Connection '{connection_name}' OK  (user={info.get('user', '?')}, account={info.get('account', '?')})")
     return info
 
 
