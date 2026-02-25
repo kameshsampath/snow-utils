@@ -400,11 +400,18 @@ def create_iam_policy(
     policy_name: str,
     bucket_name: str,
     tags: list[dict[str, str]] | None = None,
+    sts_client: Any | None = None,
 ) -> str:
-    """Create IAM policy for S3 access and return the policy ARN."""
+    """Create IAM policy for S3 access and return the policy ARN.
+
+    Args:
+        sts_client: Optional pre-configured STS client. When omitted a new
+            ``boto3.client("sts")`` is created, which inherits the current
+            env -- problematic when RustFS ``AWS_*`` vars are set.
+    """
     click.echo(f"Creating IAM policy: {policy_name}")
 
-    account_id = get_aws_account_id(boto3.client("sts"))
+    account_id = get_aws_account_id(sts_client or boto3.client("sts"))
     policy_arn = f"arn:aws:iam::{account_id}:policy/{policy_name}"
 
     try:
