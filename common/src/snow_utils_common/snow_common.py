@@ -190,6 +190,76 @@ def run_snow_sql(
     return None
 
 
+def discover_snowflake_connection() -> dict:
+    """Interactive Snowflake connection discovery via snow CLI.
+
+    Lists available connections, prompts user to select one, tests it,
+    and returns connection details. Reusable across all snow-utils skills.
+
+    Returns:
+        dict with keys: connection_name, account, user, host, role, database, warehouse.
+        Only non-empty values are included.
+
+    Raises:
+        click.ClickException on failure (no connections, test failed, etc.)
+    """
+    result = subprocess.run(
+        ["snow", "connection", "list", "--format=json"],
+        capture_output=True, text=True,
+    )
+    if result.returncode != 0:
+        raise click.ClickException(
+            f"Failed to list Snowflake connections: {result.stderr.strip()}\n"
+            "Is snowflake-cli installed? Run: pip install snowflake-cli"
+        )
+
+    connections = json.loads(result.stdout)
+    if not connections:
+        raise click.ClickException(
+            "No Snowflake connections found.\nRun: snow connection add"
+        )
+
+    click.echo("Available Snowflake connections:\n")
+    for i, c in enumerate(connections, 1):
+        name = c.get("connection_name", "unknown")
+        params = c.get("parameters", {})
+        user = params.get("user", "")
+        account = params.get("account", "")
+        marker = " *" if c.get("is_default") else ""
+        click.echo(f"  {i}. {name}  ({user}@{account}){marker}")
+
+    default_idx = next(
+        (i for i, c in enumerate(connections, 1) if c.get("is_default")), 1,
+    )
+    choice = click.prompt(
+        "\nSelect connection (* = default)",
+        type=click.IntRange(1, len(connections)),
+        default=default_idx,
+    )
+    selected = connections[choice - 1].get("connection_name", "unknown")
+
+    click.echo(f"\nTesting connection '{selected}'...")
+    test_result = subprocess.run(
+        ["snow", "connection", "test", "-c", selected, "--format=json"],
+        capture_output=True, text=True,
+    )
+    if test_result.returncode != 0:
+        raise click.ClickException(
+            f"Connection test failed for '{selected}': {test_result.stderr.strip()}"
+        )
+
+    test_data = json.loads(test_result.stdout)
+
+    info = {"connection_name": selected}
+    for key in ("Account", "User", "Host", "Role", "Database", "Warehouse"):
+        val = test_data.get(key, "")
+        if val:
+            info[key.lower()] = val
+
+    click.echo(f"✓ Connection '{selected}' OK  (user={info.get('user', '?')}, account={info.get('account', '?')})")
+    return info
+
+
 def run_snow_sql_stdin(sql: str, *, check: bool = True) -> subprocess.CompletedProcess:
     """Execute multi-statement SQL via stdin."""
     cmd = ["snow", "sql", *_snow_cli_options.get_flags(), "--stdin"]

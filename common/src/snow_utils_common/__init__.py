@@ -15,6 +15,7 @@ from .network_presets import (
     validate_mode_type,
 )
 from .snow_common import (
+    discover_snowflake_connection,
     get_snow_cli_options,
     is_masking_enabled,
     mask_arn,
@@ -33,6 +34,7 @@ __all__ = [
     "NetworkRuleMode",
     "NetworkRuleType",
     "collect_ipv4_cidrs",
+    "discover_snowflake_connection",
     "get_github_actions_ips",
     "get_google_ips",
     "get_local_ip",
