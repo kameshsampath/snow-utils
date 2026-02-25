@@ -285,3 +285,53 @@ def run_snow_sql_stdin(sql: str, *, check: bool = True) -> subprocess.CompletedP
         raise click.ClickException(f"snow sql failed: {result.stderr}")
 
     return result
+
+
+def run_snow_sql_file(
+    sql_file: str | Path,
+    variables: dict[str, str] | None = None,
+    *,
+    check: bool = True,
+    dry_run: bool = False,
+) -> subprocess.CompletedProcess | None:
+    """Execute a Jinja-templated SQL file via ``snow sql -f``.
+
+    Args:
+        sql_file: Path to the SQL file (absolute or relative to cwd).
+        variables: Dict of Jinja template variables passed as ``--variable key=value``.
+        check: Raise on non-zero exit.
+        dry_run: If True, print the SQL template and variables without executing.
+
+    Returns:
+        CompletedProcess on execution, None on dry_run.
+    """
+    path = Path(sql_file)
+    if not path.exists():
+        raise click.ClickException(f"SQL template not found: {path}")
+
+    if dry_run:
+        click.echo(f"\n--- {path.name} ---")
+        click.echo(path.read_text())
+        if variables:
+            click.echo(f"Variables: {variables}")
+        return None
+
+    cmd = ["snow", "sql", *_snow_cli_options.get_flags(), "-f", str(path),
+           "--enable-templating", "ALL"]
+    if variables:
+        for k, v in variables.items():
+            cmd.extend(["--variable", f"{k}={v}"])
+
+    if _snow_cli_options.debug:
+        click.echo(f"[DEBUG] Running: {' '.join(cmd)}")
+
+    result = subprocess.run(cmd, capture_output=True, text=True)
+
+    if _snow_cli_options.debug and result.stderr:
+        click.echo(f"[DEBUG] stderr: {result.stderr}")
+    if result.stdout.strip():
+        click.echo(result.stdout.strip())
+
+    if check and result.returncode != 0:
+        raise click.ClickException(f"snow sql -f {path.name} failed: {result.stderr}")
+    return result
