@@ -22,6 +22,7 @@ Shared functionality for snow CLI wrapper functions and options.
 import json
 import re
 import subprocess
+from pathlib import Path
 from dataclasses import dataclass
 
 import click
@@ -311,9 +312,20 @@ def run_snow_sql_file(
 
     if dry_run:
         click.echo(f"\n--- {path.name} ---")
-        click.echo(path.read_text())
+        template_text = path.read_text()
         if variables:
-            click.echo(f"Variables: {variables}")
+            from jinja2 import Environment
+            env = Environment(
+                variable_start_string="{{",
+                variable_end_string="}}",
+                comment_start_string="{#",
+                comment_end_string="#}",
+                keep_trailing_newline=True,
+            )
+            rendered = env.from_string(template_text).render(**variables)
+            click.echo(rendered)
+        else:
+            click.echo(template_text)
         return None
 
     cmd = ["snow", "sql", *_snow_cli_options.get_flags(), "-f", str(path),
