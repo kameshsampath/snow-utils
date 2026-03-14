@@ -1,4 +1,4 @@
--- Copyright 2026 Kamesh Sampath
+-- Copyright 2026 Snowflake Inc.
 -- Generated with Cortex Code
 --
 -- Licensed under the Apache License, Version 2.0 (the "License");

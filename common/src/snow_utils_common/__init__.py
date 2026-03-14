@@ -1,4 +1,4 @@
-# Copyright 2026 Kamesh Sampath
+# Copyright 2026 Snowflake Inc.
 # Licensed under the Apache License, Version 2.0
 """
 Snow-utils common utilities shared across all skills.

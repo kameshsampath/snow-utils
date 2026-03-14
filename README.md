@@ -77,8 +77,8 @@ snow-utils pat:remove
 ### 1. Clone and Setup
 
 ```bash
-git clone https://github.com/kameshsampath/snow-bin-utils
-cd snow-bin-utils
+git clone https://github.com/Snowflake-Labs/snow-utils
+cd snow-utils
 
 # Setup Python environment and install global command
 task setup
@@ -766,4 +766,4 @@ uv run ruff check . --fix
 
 Apache License 2.0 — See [LICENSE](LICENSE) for details.
 
-Copyright 2024 Kamesh Sampath
+Copyright 2026 Snowflake Inc.
